@@ -34,13 +34,26 @@ watermark_html = f"""
 """
 st.markdown(watermark_html, unsafe_allow_html=True)
 
+
 # ── Funciones auxiliares ──────────────────────────────────────────────────────
-def parse_probability(value):
-    """
-    Convierte entradas como:
-    0.5, 1, '0.25', '1/2', '3/4'
-    a float.
-    """
+def parse_probability_decimal(value):
+    if value is None:
+        raise ValueError("Celda vacía.")
+
+    if isinstance(value, (int, float, np.integer, np.floating)):
+        return float(value)
+
+    text = str(value).strip().replace(",", ".")
+    if text == "":
+        raise ValueError("Celda vacía.")
+
+    try:
+        return float(text)
+    except Exception as exc:
+        raise ValueError(f"Valor decimal inválido: {value}") from exc
+
+
+def parse_probability_fraction(value):
     if value is None:
         raise ValueError("Celda vacía.")
 
@@ -59,6 +72,17 @@ def parse_probability(value):
         raise ValueError(f"Valor inválido: {value}") from exc
 
 
+def parse_matrix_df(df_text: pd.DataFrame, mode: str) -> np.ndarray:
+    arr = np.zeros(df_text.shape, dtype=float)
+    for i in range(df_text.shape[0]):
+        for j in range(df_text.shape[1]):
+            if mode == "Decimales":
+                arr[i, j] = parse_probability_decimal(df_text.iloc[i, j])
+            else:
+                arr[i, j] = parse_probability_fraction(df_text.iloc[i, j])
+    return arr
+
+
 def mat_power(P: np.ndarray, n: int) -> np.ndarray:
     result = np.eye(len(P))
     base = P.copy()
@@ -71,9 +95,6 @@ def mat_power(P: np.ndarray, n: int) -> np.ndarray:
 
 
 def steady_state(P: np.ndarray):
-    """
-    Resuelve πP = π con sum(π)=1.
-    """
     n = len(P)
     A = P.T - np.eye(n)
     A = np.vstack([A, np.ones(n)])
@@ -131,33 +152,11 @@ def build_evolution(P: np.ndarray, v0: np.ndarray, n_max: int):
     return out
 
 
-def get_default_matrix_text(dim: int, state_names):
-    df = pd.DataFrame(
-        np.full((dim, dim), "0"),
-        index=state_names,
-        columns=state_names
-    )
-    val = f"1/{dim}" if dim > 1 else "1"
-    for i in range(dim):
-        for j in range(dim):
-            df.iloc[i, j] = val
-    return df
-
-
-def parse_matrix_df(df_text: pd.DataFrame) -> np.ndarray:
-    arr = np.zeros(df_text.shape, dtype=float)
-    for i in range(df_text.shape[0]):
-        for j in range(df_text.shape[1]):
-            arr[i, j] = parse_probability(df_text.iloc[i, j])
-    return arr
-
-
 def build_graph_figure(P: np.ndarray, state_names, threshold=1e-12):
     n = len(state_names)
-
-    # Posiciones en círculo
     angles = np.linspace(0, 2 * np.pi, n, endpoint=False)
     radius = 1.0
+
     pos = {
         i: (radius * np.cos(a), radius * np.sin(a))
         for i, a in enumerate(angles)
@@ -165,7 +164,6 @@ def build_graph_figure(P: np.ndarray, state_names, threshold=1e-12):
 
     fig = go.Figure()
 
-    # Aristas
     for i in range(n):
         x0, y0 = pos[i]
         for j in range(n):
@@ -176,7 +174,6 @@ def build_graph_figure(P: np.ndarray, state_names, threshold=1e-12):
             x1, y1 = pos[j]
 
             if i == j:
-                # Bucle propio
                 loop_r = 0.18
                 t = np.linspace(0, 2 * np.pi, 80)
                 cx = x0 + 0.18
@@ -201,7 +198,6 @@ def build_graph_figure(P: np.ndarray, state_names, threshold=1e-12):
                     font=dict(size=11)
                 )
             else:
-                # Ajuste para que la línea no entre al centro del nodo
                 dx = x1 - x0
                 dy = y1 - y0
                 dist = math.sqrt(dx**2 + dy**2)
@@ -225,25 +221,13 @@ def build_graph_figure(P: np.ndarray, state_names, threshold=1e-12):
                     showlegend=False
                 ))
 
-                # Flecha
                 fig.add_annotation(
-                    x=xe,
-                    y=ye,
-                    ax=xs,
-                    ay=ys,
-                    xref="x",
-                    yref="y",
-                    axref="x",
-                    ayref="y",
-                    showarrow=True,
-                    arrowhead=3,
-                    arrowsize=1.3,
-                    arrowwidth=1.8,
-                    opacity=0.9,
-                    text=""
+                    x=xe, y=ye, ax=xs, ay=ys,
+                    xref="x", yref="y", axref="x", ayref="y",
+                    showarrow=True, arrowhead=3, arrowsize=1.3,
+                    arrowwidth=1.8, opacity=0.9, text=""
                 )
 
-                # Etiqueta de la arista
                 mx = (xs + xe) / 2
                 my = (ys + ye) / 2
                 fig.add_annotation(
@@ -255,7 +239,6 @@ def build_graph_figure(P: np.ndarray, state_names, threshold=1e-12):
                     bgcolor="rgba(0,0,0,0.35)"
                 )
 
-    # Nodos
     node_x = [pos[i][0] for i in range(n)]
     node_y = [pos[i][1] for i in range(n)]
 
@@ -275,18 +258,38 @@ def build_graph_figure(P: np.ndarray, state_names, threshold=1e-12):
     ))
 
     fig.update_layout(
-        title="Grafo asociado a la matriz de transición",
-        height=520,
-        margin=dict(l=20, r=20, t=60, b=20),
+        title="Grafo asociado",
+        height=420,
+        margin=dict(l=10, r=10, t=50, b=10),
         xaxis=dict(visible=False),
         yaxis=dict(visible=False, scaleanchor="x", scaleratio=1),
     )
-
     return fig
+
+
+def default_matrix(dim: int, mode: str) -> pd.DataFrame:
+    if mode == "Decimales":
+        val = round(1 / dim, 4)
+    else:
+        val = f"1/{dim}"
+
+    return pd.DataFrame(
+        [[val for _ in range(dim)] for _ in range(dim)],
+        columns=[f"s{i}" for i in range(dim)],
+        index=[f"s{i}" for i in range(dim)]
+    )
+
+
+def rename_df(df: pd.DataFrame, state_names):
+    df = df.copy()
+    df.index = state_names
+    df.columns = state_names
+    return df
 
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 st.sidebar.header("Configuración")
+
 dim = st.sidebar.selectbox("Número de estados", list(range(2, 9)), index=1)
 
 n_steps = st.sidebar.number_input(
@@ -297,61 +300,87 @@ n_steps = st.sidebar.number_input(
     step=1
 )
 
+input_mode = st.sidebar.radio(
+    "Modo de matriz",
+    ["Decimales", "Fracciones"],
+    index=0
+)
+
 st.sidebar.markdown("---")
 st.sidebar.markdown("**Nombres de estados**")
 
 state_names = []
 for i in range(dim):
     name = st.sidebar.text_input(f"Estado {i}", value=f"s{i}", key=f"state_name_{i}")
-    clean_name = name.strip() if name.strip() else f"s{i}"
-    state_names.append(clean_name)
+    state_names.append(name.strip() if name.strip() else f"s{i}")
 
 # ── Título ────────────────────────────────────────────────────────────────────
 st.title("Análisis de Cadenas de Markov")
 
-# ── Estado de sesión para la matriz ───────────────────────────────────────────
-matrix_key = f"matrix_dim_{dim}"
+# ── Estado persistente de la matriz ───────────────────────────────────────────
+matrix_state_key = f"matrix_store_{dim}_{input_mode}"
 
-if matrix_key not in st.session_state:
-    st.session_state[matrix_key] = get_default_matrix_text(dim, state_names)
-else:
-    current_df = st.session_state[matrix_key].copy()
-    current_df.index = state_names
-    current_df.columns = state_names
-    st.session_state[matrix_key] = current_df
+if matrix_state_key not in st.session_state:
+    st.session_state[matrix_state_key] = default_matrix(dim, input_mode)
 
-# ── Entrada de matriz ─────────────────────────────────────────────────────────
+stored_df = st.session_state[matrix_state_key].copy()
+
+# Si cambian nombres de estados, solo renombramos; no reconstruimos valores
+stored_df = rename_df(stored_df, state_names)
+st.session_state[matrix_state_key] = stored_df
+
+# ── Matriz y grafo en dos columnas ────────────────────────────────────────────
 st.markdown("### Matriz de transición")
-st.caption("Puedes escribir decimales o fracciones, por ejemplo: 0.5, 0.25, 1/2, 3/4.")
 
-edited = st.data_editor(
-    st.session_state[matrix_key],
-    use_container_width=True,
-    num_rows="fixed",
-    key=f"editor_{dim}"
-)
+if input_mode == "Decimales":
+    st.caption("Ingresa valores decimales, por ejemplo: 0.5, 0.25, 1.0")
+else:
+    st.caption("Ingresa fracciones o decimales, por ejemplo: 1/2, 3/4, 0.25")
 
-st.session_state[matrix_key] = edited.copy()
+col_matrix, col_graph = st.columns([1.3, 1])
 
-try:
-    P = parse_matrix_df(edited)
-except Exception as e:
-    st.error(f"Error al leer la matriz: {e}")
+with col_matrix:
+    edited = st.data_editor(
+        st.session_state[matrix_state_key],
+        use_container_width=True,
+        num_rows="fixed",
+        key=f"editor_{dim}_{input_mode}"
+    )
+
+    # Guardar inmediatamente lo editado
+    st.session_state[matrix_state_key] = edited.copy()
+
+    try:
+        P = parse_matrix_df(edited, input_mode)
+        valid, msg = is_valid_stochastic(P)
+
+        if valid:
+            st.success("Matriz estocástica válida.")
+        else:
+            st.error(f"Matriz inválida: {msg}")
+    except Exception as e:
+        P = None
+        st.error(f"Error al leer la matriz: {e}")
+
+with col_graph:
+    st.markdown("#### Grafo")
+
+    if P is not None:
+        valid, msg = is_valid_stochastic(P)
+        if valid:
+            fig_graph = build_graph_figure(P, state_names)
+            st.plotly_chart(fig_graph, use_container_width=True)
+        else:
+            st.info("El grafo se mostrará cuando la matriz sea válida.")
+    else:
+        st.info("El grafo se mostrará cuando la matriz sea válida.")
+
+if P is None:
     st.stop()
 
 valid, msg = is_valid_stochastic(P)
 if not valid:
-    st.error(f"Matriz inválida: {msg}")
     st.stop()
-else:
-    st.success("Matriz estocástica válida.")
-
-# ── Grafo ─────────────────────────────────────────────────────────────────────
-st.markdown("---")
-st.markdown("### Grafo de la cadena")
-
-fig_graph = build_graph_figure(P, state_names)
-st.plotly_chart(fig_graph, use_container_width=True)
 
 # ── Estado inicial ────────────────────────────────────────────────────────────
 st.markdown("---")
@@ -393,7 +422,7 @@ else:
         st.warning(f"La distribución inicial suma {total_v0:.4f}. Se normalizó automáticamente.")
         v0 = v0 / total_v0
 
-# ── Cálculos principales ──────────────────────────────────────────────────────
+# ── Cálculos ──────────────────────────────────────────────────────────────────
 n_steps = int(n_steps)
 evol = build_evolution(P, v0, n_steps)
 Pn = mat_power(P, n_steps)
@@ -403,7 +432,6 @@ pi, _ = steady_state(P)
 # ── Matriz P^n ────────────────────────────────────────────────────────────────
 st.markdown("---")
 st.markdown(f"### Matriz $P^{{{n_steps}}}$")
-
 Pn_df = pd.DataFrame(np.round(Pn, 6), index=state_names, columns=state_names)
 st.dataframe(Pn_df, use_container_width=True)
 
