@@ -25,20 +25,6 @@ watermark = """
 """
 st.markdown(watermark, unsafe_allow_html=True)
 
-# ── CSS ───────────────────────────────────────────────────────────────────────
-st.markdown("""
-<style>
-  .watermark {
-    position: fixed; bottom: 14px; right: 18px;
-    font-size: 12px; color: rgba(120,120,120,0.55);
-    font-style: italic; pointer-events: none; z-index: 9999;
-  }
-  .section-title { font-size: 1.05rem; font-weight: 600; margin-bottom: 4px; }
-  .stDataFrame { font-size: 13px; }
-</style>
-<div class="watermark">By M.Sc. Dilan J. Mogollón C.</div>
-""", unsafe_allow_html=True)
-
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def mat_power(P: np.ndarray, n: int) -> np.ndarray:
