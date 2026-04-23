@@ -7,7 +7,23 @@ from plotly.subplots import make_subplots
 # ── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Cadenas de Markov", layout="wide")
 
-WATERMARK = "By M.Sc. Dilan J. Mogollón C."
+watermark = """
+<style>
+.watermark {
+    position: fixed;
+    top: 150px;
+    right: 25px;
+    opacity: 0.95;
+    font-size: 22px;
+    font-weight: 900;
+    color: #ff4b4b;
+    text-shadow: 1px 1px 2px #000;
+    z-index: 2000;
+}
+</style>
+<div class="watermark">by M.Sc. Dilan Mogollón</div>
+"""
+st.markdown(watermark, unsafe_allow_html=True)
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
 st.markdown("""
