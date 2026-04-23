@@ -242,7 +242,6 @@ for i, name in enumerate(state_names):
     )
 
 fig_ev.update_layout(
-    title=f"Evolución de la distribución en {int(n_steps)} pasos",
     xaxis_title="Paso n",
     yaxis_title="Probabilidad",
     yaxis=dict(range=[0, 1.05]),
