@@ -295,7 +295,6 @@ with col2:
         )
     )
     fig_pi.update_layout(
-        title="Distribución de estado estable",
         xaxis_title="Estado",
         yaxis_title="Probabilidad",
         yaxis=dict(range=[0, max(0.05, float(max(pi)) * 1.25)]),
