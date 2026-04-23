@@ -29,24 +29,27 @@ watermark_html = f"""
     z-index: 9999;
     pointer-events: none;
 }}
+.matrix-label {{
+    font-weight: 700;
+    text-align: center;
+    padding-top: 8px;
+}}
+.row-label {{
+    font-weight: 700;
+    padding-top: 8px;
+}}
 </style>
 <div class="watermark">{WATERMARK_TEXT}</div>
 """
 st.markdown(watermark_html, unsafe_allow_html=True)
 
-
 # ── Funciones auxiliares ──────────────────────────────────────────────────────
 def parse_probability_decimal(value):
     if value is None:
         raise ValueError("Celda vacía.")
-
-    if isinstance(value, (int, float, np.integer, np.floating)):
-        return float(value)
-
     text = str(value).strip().replace(",", ".")
     if text == "":
         raise ValueError("Celda vacía.")
-
     try:
         return float(text)
     except Exception as exc:
@@ -56,14 +59,9 @@ def parse_probability_decimal(value):
 def parse_probability_fraction(value):
     if value is None:
         raise ValueError("Celda vacía.")
-
-    if isinstance(value, (int, float, np.integer, np.floating)):
-        return float(value)
-
     text = str(value).strip().replace(",", ".")
     if text == "":
         raise ValueError("Celda vacía.")
-
     try:
         if "/" in text:
             return float(Fraction(text))
@@ -72,15 +70,42 @@ def parse_probability_fraction(value):
         raise ValueError(f"Valor inválido: {value}") from exc
 
 
-def parse_matrix_df(df_text: pd.DataFrame, mode: str) -> np.ndarray:
-    arr = np.zeros(df_text.shape, dtype=float)
-    for i in range(df_text.shape[0]):
-        for j in range(df_text.shape[1]):
+def parse_matrix_values(matrix_text, mode):
+    dim = len(matrix_text)
+    P = np.zeros((dim, dim), dtype=float)
+
+    for i in range(dim):
+        for j in range(dim):
+            value = matrix_text[i][j]
             if mode == "Decimales":
-                arr[i, j] = parse_probability_decimal(df_text.iloc[i, j])
+                P[i, j] = parse_probability_decimal(value)
             else:
-                arr[i, j] = parse_probability_fraction(df_text.iloc[i, j])
-    return arr
+                P[i, j] = parse_probability_fraction(value)
+
+    return P
+
+
+def is_valid_stochastic(P: np.ndarray):
+    if P.ndim != 2:
+        return False, "La matriz no es bidimensional."
+
+    rows, cols = P.shape
+    if rows != cols:
+        return False, "La matriz debe ser cuadrada."
+
+    if np.any(np.isnan(P)):
+        return False, "Hay celdas vacías o inválidas."
+
+    if np.any(P < 0):
+        return False, "Hay valores negativos."
+
+    row_sums = P.sum(axis=1)
+    if not np.allclose(row_sums, 1.0, atol=1e-6):
+        bad = np.where(~np.isclose(row_sums, 1.0, atol=1e-6))[0]
+        filas = [int(i) + 1 for i in bad]
+        return False, f"Las filas {filas} no suman 1."
+
+    return True, ""
 
 
 def mat_power(P: np.ndarray, n: int) -> np.ndarray:
@@ -114,29 +139,6 @@ def steady_state(P: np.ndarray):
         return pi, rank
     except Exception:
         return None, None
-
-
-def is_valid_stochastic(P: np.ndarray):
-    if P.ndim != 2:
-        return False, "La matriz no es bidimensional."
-
-    rows, cols = P.shape
-    if rows != cols:
-        return False, "La matriz debe ser cuadrada."
-
-    if np.any(np.isnan(P)):
-        return False, "Hay celdas vacías o inválidas."
-
-    if np.any(P < 0):
-        return False, "Hay valores negativos."
-
-    row_sums = P.sum(axis=1)
-    if not np.allclose(row_sums, 1.0, atol=1e-6):
-        bad = np.where(~np.isclose(row_sums, 1.0, atol=1e-6))[0]
-        filas = [int(i) + 1 for i in bad]
-        return False, f"Las filas {filas} no suman 1."
-
-    return True, ""
 
 
 def build_evolution(P: np.ndarray, v0: np.ndarray, n_max: int):
@@ -267,24 +269,41 @@ def build_graph_figure(P: np.ndarray, state_names, threshold=1e-12):
     return fig
 
 
-def default_matrix(dim: int, mode: str) -> pd.DataFrame:
-    if mode == "Decimales":
-        val = round(1 / dim, 4)
-    else:
-        val = f"1/{dim}"
+def initialize_matrix_cells(dim, input_mode):
+    meta_key = "matrix_input_meta"
+    current_meta = (dim, input_mode)
 
-    return pd.DataFrame(
-        [[val for _ in range(dim)] for _ in range(dim)],
-        columns=[f"s{i}" for i in range(dim)],
-        index=[f"s{i}" for i in range(dim)]
-    )
+    if st.session_state.get(meta_key) != current_meta:
+        default_value = f"{1/dim:.4f}" if input_mode == "Decimales" else f"1/{dim}"
+        for i in range(dim):
+            for j in range(dim):
+                st.session_state[f"cell_{i}_{j}"] = default_value
+        st.session_state[meta_key] = current_meta
 
 
-def rename_df(df: pd.DataFrame, state_names):
-    df = df.copy()
-    df.index = state_names
-    df.columns = state_names
-    return df
+def collect_matrix_text(dim):
+    return [
+        [st.session_state.get(f"cell_{i}_{j}", "") for j in range(dim)]
+        for i in range(dim)
+    ]
+
+
+def build_v0(dim, state_names, init_mode, init_state, custom_values):
+    if init_mode == "Un estado puro":
+        v0 = np.zeros(dim)
+        v0[state_names.index(init_state)] = 1.0
+        return v0
+
+    v0 = np.array(custom_values, dtype=float)
+    total = v0.sum()
+
+    if total <= 1e-12:
+        raise ValueError("La distribución inicial no puede sumar 0.")
+
+    if abs(total - 1.0) > 1e-6:
+        v0 = v0 / total
+
+    return v0
 
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
@@ -292,7 +311,7 @@ st.sidebar.header("Configuración")
 
 dim = st.sidebar.selectbox("Número de estados", list(range(2, 9)), index=1)
 
-n_steps = st.sidebar.number_input(
+n_steps_sidebar = st.sidebar.number_input(
     "Pasos n",
     min_value=1,
     max_value=2000,
@@ -314,120 +333,173 @@ for i in range(dim):
     name = st.sidebar.text_input(f"Estado {i}", value=f"s{i}", key=f"state_name_{i}")
     state_names.append(name.strip() if name.strip() else f"s{i}")
 
+# Inicializar celdas
+initialize_matrix_cells(dim, input_mode)
+
 # ── Título ────────────────────────────────────────────────────────────────────
 st.title("Análisis de Cadenas de Markov")
 
-# ── Estado persistente de la matriz ───────────────────────────────────────────
-matrix_state_key = f"matrix_store_{dim}_{input_mode}"
+# ── Formulario ────────────────────────────────────────────────────────────────
+with st.form("resolver_cadena_form", clear_on_submit=False):
+    st.markdown("### Matriz de transición")
 
-if matrix_state_key not in st.session_state:
-    st.session_state[matrix_state_key] = default_matrix(dim, input_mode)
+    if input_mode == "Decimales":
+        st.caption("Ingresa decimales, por ejemplo: 0.5, 0.25, 1.0")
+    else:
+        st.caption("Ingresa fracciones o decimales, por ejemplo: 1/2, 3/4, 0.25")
 
-stored_df = st.session_state[matrix_state_key].copy()
+    col_matrix, col_graph = st.columns([1.3, 1])
 
-# Si cambian nombres de estados, solo renombramos; no reconstruimos valores
-stored_df = rename_df(stored_df, state_names)
-st.session_state[matrix_state_key] = stored_df
+    with col_matrix:
+        header_cols = st.columns(dim + 1)
+        header_cols[0].markdown("")
+        for j, name in enumerate(state_names):
+            header_cols[j + 1].markdown(
+                f"<div class='matrix-label'>{name}</div>",
+                unsafe_allow_html=True
+            )
 
-# ── Matriz y grafo en dos columnas ────────────────────────────────────────────
-st.markdown("### Matriz de transición")
+        for i in range(dim):
+            row_cols = st.columns(dim + 1)
+            row_cols[0].markdown(
+                f"<div class='row-label'>{state_names[i]}</div>",
+                unsafe_allow_html=True
+            )
+            for j in range(dim):
+                row_cols[j + 1].text_input(
+                    label=f"{state_names[i]}-{state_names[j]}",
+                    key=f"cell_{i}_{j}",
+                    label_visibility="collapsed"
+                )
 
-if input_mode == "Decimales":
-    st.caption("Ingresa valores decimales, por ejemplo: 0.5, 0.25, 1.0")
-else:
-    st.caption("Ingresa fracciones o decimales, por ejemplo: 1/2, 3/4, 0.25")
+    with col_graph:
+        st.markdown("#### Grafo")
+        st.info("El grafo se genera al pulsar **Resolver**.")
 
-col_matrix, col_graph = st.columns([1.3, 1])
+    st.markdown("---")
+    st.markdown("### Estado inicial")
 
-with col_matrix:
-    edited = st.data_editor(
-        st.session_state[matrix_state_key],
-        use_container_width=True,
-        num_rows="fixed",
-        key=f"editor_{dim}_{input_mode}"
+    init_mode_form = st.radio(
+        "Tipo de distribución inicial",
+        ["Un estado puro", "Distribución personalizada"],
+        horizontal=True,
+        key="form_init_mode"
     )
 
-    # Guardar inmediatamente lo editado
-    st.session_state[matrix_state_key] = edited.copy()
+    init_state_form = None
+    custom_values_form = []
 
-    try:
-        P = parse_matrix_df(edited, input_mode)
-        valid, msg = is_valid_stochastic(P)
-
-        if valid:
-            st.success("Matriz estocástica válida.")
-        else:
-            st.error(f"Matriz inválida: {msg}")
-    except Exception as e:
-        P = None
-        st.error(f"Error al leer la matriz: {e}")
-
-with col_graph:
-    st.markdown("#### Grafo")
-
-    if P is not None:
-        valid, msg = is_valid_stochastic(P)
-        if valid:
-            fig_graph = build_graph_figure(P, state_names)
-            st.plotly_chart(fig_graph, use_container_width=True)
-        else:
-            st.info("El grafo se mostrará cuando la matriz sea válida.")
+    if init_mode_form == "Un estado puro":
+        init_state_form = st.selectbox(
+            "Estado inicial",
+            state_names,
+            key=f"form_init_state_{dim}"
+        )
     else:
-        st.info("El grafo se mostrará cuando la matriz sea válida.")
+        st.markdown("**Distribución inicial**")
+        cols_v0 = st.columns(dim)
+        for i, c in enumerate(cols_v0):
+            value = c.number_input(
+                state_names[i],
+                min_value=0.0,
+                max_value=1.0,
+                value=round(1 / dim, 4),
+                step=0.01,
+                key=f"v0_{dim}_{i}"
+            )
+            custom_values_form.append(value)
 
-if P is None:
-    st.stop()
+    st.markdown("---")
+    submitted = st.form_submit_button(
+        "Resolver",
+        use_container_width=True,
+        type="primary"
+    )
 
-valid, msg = is_valid_stochastic(P)
-if not valid:
-    st.stop()
-
-# ── Estado inicial ────────────────────────────────────────────────────────────
-st.markdown("---")
-st.markdown("### Estado inicial")
-
-init_mode = st.radio(
-    "Tipo de distribución inicial",
-    ["Un estado puro", "Distribución personalizada"],
-    horizontal=True
+# ── Resolver solo al enviar ───────────────────────────────────────────────────
+current_signature = (
+    dim,
+    input_mode,
+    tuple(state_names),
+    int(n_steps_sidebar)
 )
 
-if init_mode == "Un estado puro":
-    init_state = st.selectbox("Estado inicial", state_names)
-    v0 = np.zeros(dim)
-    v0[state_names.index(init_state)] = 1.0
-else:
-    st.markdown("**Distribución inicial**")
-    cols_v0 = st.columns(dim)
-    v0_raw = []
-    for i, c in enumerate(cols_v0):
-        value = c.number_input(
-            state_names[i],
-            min_value=0.0,
-            max_value=1.0,
-            value=round(1 / dim, 4),
-            step=0.01,
-            key=f"v0_{dim}_{i}"
-        )
-        v0_raw.append(value)
+if submitted:
+    try:
+        matrix_text = collect_matrix_text(dim)
+        P = parse_matrix_values(matrix_text, input_mode)
 
-    v0 = np.array(v0_raw, dtype=float)
-    total_v0 = v0.sum()
+        valid, msg = is_valid_stochastic(P)
+        if not valid:
+            st.session_state.pop("solution_data", None)
+            st.error(f"Matriz inválida: {msg}")
+        else:
+            v0 = build_v0(
+                dim=dim,
+                state_names=state_names,
+                init_mode=init_mode_form,
+                init_state=init_state_form,
+                custom_values=custom_values_form
+            )
 
-    if total_v0 <= 1e-12:
-        st.error("La distribución inicial no puede sumar 0.")
-        st.stop()
+            n_steps = int(n_steps_sidebar)
+            evol = build_evolution(P, v0, n_steps)
+            Pn = mat_power(P, n_steps)
+            dist_n = evol[n_steps]
+            pi, rank = steady_state(P)
 
-    if abs(total_v0 - 1.0) > 1e-6:
-        st.warning(f"La distribución inicial suma {total_v0:.4f}. Se normalizó automáticamente.")
-        v0 = v0 / total_v0
+            st.session_state["solution_data"] = {
+                "signature": current_signature,
+                "P": P,
+                "v0": v0,
+                "n_steps": n_steps,
+                "evol": evol,
+                "Pn": Pn,
+                "dist_n": dist_n,
+                "pi": pi,
+                "rank": rank,
+                "state_names": state_names.copy()
+            }
 
-# ── Cálculos ──────────────────────────────────────────────────────────────────
-n_steps = int(n_steps)
-evol = build_evolution(P, v0, n_steps)
-Pn = mat_power(P, n_steps)
-dist_n = evol[n_steps]
-pi, _ = steady_state(P)
+            st.success("Modelo resuelto correctamente.")
+
+    except Exception as e:
+        st.session_state.pop("solution_data", None)
+        st.error(f"No se pudo resolver: {e}")
+
+# ── Mostrar resultados solo si la firma coincide ──────────────────────────────
+solution = st.session_state.get("solution_data")
+
+if solution is None:
+    st.info("Completa la matriz y pulsa **Resolver** para generar el análisis.")
+    st.stop()
+
+if solution["signature"] != current_signature:
+    st.info("Cambiaste la configuración. Pulsa **Resolver** para actualizar los resultados.")
+    st.stop()
+
+P = solution["P"]
+v0 = solution["v0"]
+n_steps = solution["n_steps"]
+evol = solution["evol"]
+Pn = solution["Pn"]
+dist_n = solution["dist_n"]
+pi = solution["pi"]
+rank = solution["rank"]
+
+# ── Matriz y grafo ────────────────────────────────────────────────────────────
+st.markdown("---")
+st.markdown("### Matriz y grafo de la cadena")
+
+colA, colB = st.columns([1.15, 1])
+
+with colA:
+    P_df = pd.DataFrame(np.round(P, 6), index=state_names, columns=state_names)
+    st.dataframe(P_df, use_container_width=True, height=420)
+
+with colB:
+    fig_graph = build_graph_figure(P, state_names)
+    st.plotly_chart(fig_graph, use_container_width=True)
 
 # ── Matriz P^n ────────────────────────────────────────────────────────────────
 st.markdown("---")
