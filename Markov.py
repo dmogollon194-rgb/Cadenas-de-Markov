@@ -1,7 +1,10 @@
-import streamlit as st
+import math
+from fractions import Fraction
+
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+import streamlit as st
 
 # ── Configuración de página ───────────────────────────────────────────────────
 st.set_page_config(page_title="Cadenas de Markov", layout="wide")
@@ -32,6 +35,30 @@ watermark_html = f"""
 st.markdown(watermark_html, unsafe_allow_html=True)
 
 # ── Funciones auxiliares ──────────────────────────────────────────────────────
+def parse_probability(value):
+    """
+    Convierte entradas como:
+    0.5, 1, '0.25', '1/2', '3/4'
+    a float.
+    """
+    if value is None:
+        raise ValueError("Celda vacía.")
+
+    if isinstance(value, (int, float, np.integer, np.floating)):
+        return float(value)
+
+    text = str(value).strip().replace(",", ".")
+    if text == "":
+        raise ValueError("Celda vacía.")
+
+    try:
+        if "/" in text:
+            return float(Fraction(text))
+        return float(text)
+    except Exception as exc:
+        raise ValueError(f"Valor inválido: {value}") from exc
+
+
 def mat_power(P: np.ndarray, n: int) -> np.ndarray:
     result = np.eye(len(P))
     base = P.copy()
@@ -44,6 +71,9 @@ def mat_power(P: np.ndarray, n: int) -> np.ndarray:
 
 
 def steady_state(P: np.ndarray):
+    """
+    Resuelve πP = π con sum(π)=1.
+    """
     n = len(P)
     A = P.T - np.eye(n)
     A = np.vstack([A, np.ones(n)])
@@ -101,12 +131,159 @@ def build_evolution(P: np.ndarray, v0: np.ndarray, n_max: int):
     return out
 
 
-def get_default_matrix(dim: int, state_names):
-    return pd.DataFrame(
-        np.full((dim, dim), round(1 / dim, 4)),
+def get_default_matrix_text(dim: int, state_names):
+    df = pd.DataFrame(
+        np.full((dim, dim), "0"),
         index=state_names,
         columns=state_names
     )
+    val = f"1/{dim}" if dim > 1 else "1"
+    for i in range(dim):
+        for j in range(dim):
+            df.iloc[i, j] = val
+    return df
+
+
+def parse_matrix_df(df_text: pd.DataFrame) -> np.ndarray:
+    arr = np.zeros(df_text.shape, dtype=float)
+    for i in range(df_text.shape[0]):
+        for j in range(df_text.shape[1]):
+            arr[i, j] = parse_probability(df_text.iloc[i, j])
+    return arr
+
+
+def build_graph_figure(P: np.ndarray, state_names, threshold=1e-12):
+    n = len(state_names)
+
+    # Posiciones en círculo
+    angles = np.linspace(0, 2 * np.pi, n, endpoint=False)
+    radius = 1.0
+    pos = {
+        i: (radius * np.cos(a), radius * np.sin(a))
+        for i, a in enumerate(angles)
+    }
+
+    fig = go.Figure()
+
+    # Aristas
+    for i in range(n):
+        x0, y0 = pos[i]
+        for j in range(n):
+            prob = P[i, j]
+            if prob <= threshold:
+                continue
+
+            x1, y1 = pos[j]
+
+            if i == j:
+                # Bucle propio
+                loop_r = 0.18
+                t = np.linspace(0, 2 * np.pi, 80)
+                cx = x0 + 0.18
+                cy = y0 + 0.18
+                xs = cx + loop_r * np.cos(t)
+                ys = cy + loop_r * np.sin(t)
+
+                fig.add_trace(go.Scatter(
+                    x=xs,
+                    y=ys,
+                    mode="lines",
+                    line=dict(width=2),
+                    hoverinfo="skip",
+                    showlegend=False
+                ))
+
+                fig.add_annotation(
+                    x=cx + loop_r,
+                    y=cy,
+                    text=f"{prob:.3f}",
+                    showarrow=False,
+                    font=dict(size=11)
+                )
+            else:
+                # Ajuste para que la línea no entre al centro del nodo
+                dx = x1 - x0
+                dy = y1 - y0
+                dist = math.sqrt(dx**2 + dy**2)
+                if dist == 0:
+                    continue
+
+                ux, uy = dx / dist, dy / dist
+                node_r = 0.13
+
+                xs = x0 + ux * node_r
+                ys = y0 + uy * node_r
+                xe = x1 - ux * node_r
+                ye = y1 - uy * node_r
+
+                fig.add_trace(go.Scatter(
+                    x=[xs, xe],
+                    y=[ys, ye],
+                    mode="lines",
+                    line=dict(width=2),
+                    hoverinfo="skip",
+                    showlegend=False
+                ))
+
+                # Flecha
+                fig.add_annotation(
+                    x=xe,
+                    y=ye,
+                    ax=xs,
+                    ay=ys,
+                    xref="x",
+                    yref="y",
+                    axref="x",
+                    ayref="y",
+                    showarrow=True,
+                    arrowhead=3,
+                    arrowsize=1.3,
+                    arrowwidth=1.8,
+                    opacity=0.9,
+                    text=""
+                )
+
+                # Etiqueta de la arista
+                mx = (xs + xe) / 2
+                my = (ys + ye) / 2
+                fig.add_annotation(
+                    x=mx,
+                    y=my,
+                    text=f"{prob:.3f}",
+                    showarrow=False,
+                    font=dict(size=11),
+                    bgcolor="rgba(0,0,0,0.35)"
+                )
+
+    # Nodos
+    node_x = [pos[i][0] for i in range(n)]
+    node_y = [pos[i][1] for i in range(n)]
+
+    fig.add_trace(go.Scatter(
+        x=node_x,
+        y=node_y,
+        mode="markers+text",
+        text=state_names,
+        textposition="middle center",
+        marker=dict(
+            size=42,
+            color=COLORS[:n],
+            line=dict(width=2, color="white")
+        ),
+        hovertemplate="Estado: %{text}<extra></extra>",
+        showlegend=False
+    ))
+
+    fig.update_layout(
+        title="Grafo asociado a la matriz de transición",
+        height=520,
+        margin=dict(l=20, r=20, t=60, b=20),
+        xaxis=dict(visible=False),
+        yaxis=dict(visible=False, scaleanchor="x", scaleratio=1),
+    )
+
+    return fig
+
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 st.sidebar.header("Configuración")
@@ -115,7 +292,7 @@ dim = st.sidebar.selectbox("Número de estados", list(range(2, 9)), index=1)
 n_steps = st.sidebar.number_input(
     "Pasos n",
     min_value=1,
-    max_value=10000,
+    max_value=2000,
     value=20,
     step=1
 )
@@ -136,7 +313,7 @@ st.title("Análisis de Cadenas de Markov")
 matrix_key = f"matrix_dim_{dim}"
 
 if matrix_key not in st.session_state:
-    st.session_state[matrix_key] = get_default_matrix(dim, state_names)
+    st.session_state[matrix_key] = get_default_matrix_text(dim, state_names)
 else:
     current_df = st.session_state[matrix_key].copy()
     current_df.index = state_names
@@ -145,7 +322,7 @@ else:
 
 # ── Entrada de matriz ─────────────────────────────────────────────────────────
 st.markdown("### Matriz de transición")
-st.caption("Cada fila debe sumar 1. Ingresa valores entre 0 y 1.")
+st.caption("Puedes escribir decimales o fracciones, por ejemplo: 0.5, 0.25, 1/2, 3/4.")
 
 edited = st.data_editor(
     st.session_state[matrix_key],
@@ -157,9 +334,9 @@ edited = st.data_editor(
 st.session_state[matrix_key] = edited.copy()
 
 try:
-    P = edited.astype(float).values
-except Exception:
-    st.error("La matriz contiene valores no numéricos.")
+    P = parse_matrix_df(edited)
+except Exception as e:
+    st.error(f"Error al leer la matriz: {e}")
     st.stop()
 
 valid, msg = is_valid_stochastic(P)
@@ -168,6 +345,13 @@ if not valid:
     st.stop()
 else:
     st.success("Matriz estocástica válida.")
+
+# ── Grafo ─────────────────────────────────────────────────────────────────────
+st.markdown("---")
+st.markdown("### Grafo de la cadena")
+
+fig_graph = build_graph_figure(P, state_names)
+st.plotly_chart(fig_graph, use_container_width=True)
 
 # ── Estado inicial ────────────────────────────────────────────────────────────
 st.markdown("---")
@@ -210,25 +394,25 @@ else:
         v0 = v0 / total_v0
 
 # ── Cálculos principales ──────────────────────────────────────────────────────
-evol = build_evolution(P, v0, int(n_steps))
-Pn = mat_power(P, int(n_steps))
-dist_n = evol[int(n_steps)]
-pi, rank = steady_state(P)
+n_steps = int(n_steps)
+evol = build_evolution(P, v0, n_steps)
+Pn = mat_power(P, n_steps)
+dist_n = evol[n_steps]
+pi, _ = steady_state(P)
 
 # ── Matriz P^n ────────────────────────────────────────────────────────────────
 st.markdown("---")
-st.markdown(f"### Matriz $P^{{{int(n_steps)}}}$")
+st.markdown(f"### Matriz $P^{{{n_steps}}}$")
 
 Pn_df = pd.DataFrame(np.round(Pn, 6), index=state_names, columns=state_names)
 st.dataframe(Pn_df, use_container_width=True)
 
 # ── Evolución ─────────────────────────────────────────────────────────────────
 st.markdown("---")
-st.markdown(f"### Evolución en {int(n_steps)} pasos")
-
-steps = np.arange(int(n_steps) + 1)
+st.markdown(f"### Evolución en {n_steps} pasos")
 
 fig_ev = go.Figure()
+steps = np.arange(n_steps + 1)
 
 for i, name in enumerate(state_names):
     fig_ev.add_trace(
@@ -242,23 +426,24 @@ for i, name in enumerate(state_names):
     )
 
 fig_ev.update_layout(
+    title=f"Evolución de la distribución en {n_steps} pasos",
     xaxis_title="Paso n",
     yaxis_title="Probabilidad",
     yaxis=dict(range=[0, 1.05]),
-    legend=dict(orientation="h", y=-0.25),
-    height=450,
-    margin=dict(b=90)
+    legend=dict(orientation="h", y=-0.22),
+    height=520,
+    margin=dict(b=80)
 )
 
 st.plotly_chart(fig_ev, use_container_width=True)
 
-# ── Distribución en paso n ────────────────────────────────────────────────────
+# ── Probabilidad en el paso n ─────────────────────────────────────────────────
 st.markdown("---")
-st.markdown(f"### Probabilidad en el paso {int(n_steps)}")
+st.markdown(f"### Probabilidad en el paso {n_steps}")
 
 dist_df = pd.DataFrame({
     "Estado": state_names,
-    f"P(X_{int(n_steps)})": [round(float(x), 6) for x in dist_n]
+    f"P(X_{n_steps})": [round(float(x), 6) for x in dist_n]
 })
 st.dataframe(dist_df, use_container_width=True, hide_index=True)
 
@@ -277,12 +462,12 @@ with col1:
         "Estado": state_names,
         "π": [round(float(x), 6) for x in pi]
     })
-    st.dataframe(pi_df, use_container_width=True, hide_index=True)
-
-    if rank == dim:
-        st.info("Se obtuvo una solución bien determinada del sistema lineal.")
-    else:
-        st.warning("El sistema puede tener dependencia lineal; interpreta el estado estable con cautela.")
+    st.dataframe(
+        pi_df,
+        use_container_width=True,
+        hide_index=True,
+        height=420
+    )
 
 with col2:
     fig_pi = go.Figure(
@@ -295,10 +480,11 @@ with col2:
         )
     )
     fig_pi.update_layout(
+        title="Distribución de estado estable",
         xaxis_title="Estado",
         yaxis_title="Probabilidad",
         yaxis=dict(range=[0, max(0.05, float(max(pi)) * 1.25)]),
-        height=350,
+        height=420,
         margin=dict(b=60)
     )
     st.plotly_chart(fig_pi, use_container_width=True)
