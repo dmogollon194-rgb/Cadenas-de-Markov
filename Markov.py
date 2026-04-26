@@ -760,48 +760,6 @@ def mostrar_tarjeta_estados(titulo, estados, tipo, nota):
         unsafe_allow_html=True
     )
 
-
-# ── Sidebar ───────────────────────────────────────────────────────────────────
-st.sidebar.header("Configuración general")
-
-dim = st.sidebar.selectbox(
-    "Número de estados",
-    list(range(2, 9)),
-    index=1
-)
-
-n_steps_sidebar = st.sidebar.number_input(
-    "Pasos n",
-    min_value=1,
-    max_value=2000,
-    value=20,
-    step=1
-)
-
-input_mode = st.sidebar.radio(
-    "Modo de matriz",
-    ["Decimales", "Fracciones"],
-    index=0
-)
-
-st.sidebar.markdown("---")
-st.sidebar.markdown("### Nombres de estados")
-
-state_names = []
-
-for i in range(dim):
-    name = st.sidebar.text_input(
-        f"Estado {i}",
-        value=f"s{i}",
-        key=f"state_name_{i}"
-    )
-
-    state_names.append(name.strip() if name.strip() else f"s{i}")
-
-
-initialize_matrix_cells(dim, input_mode)
-
-
 # ── Estado inicial en sidebar ─────────────────────────────────────────────────
 st.sidebar.markdown("---")
 st.sidebar.markdown("### Estado inicial")
@@ -844,6 +802,49 @@ else:
             f"La suma actual es {total_v0_sidebar:.4f}. "
             "El programa normalizará automáticamente la distribución."
         )
+
+
+# ── Sidebar ───────────────────────────────────────────────────────────────────
+st.sidebar.header("Configuración general")
+
+dim = st.sidebar.selectbox(
+    "Número de estados",
+    list(range(2, 9)),
+    index=1
+)
+
+n_steps_sidebar = st.sidebar.number_input(
+    "Pasos n",
+    min_value=1,
+    max_value=2000,
+    value=20,
+    step=1
+)
+
+input_mode = st.sidebar.radio(
+    "Modo de matriz",
+    ["Decimales", "Fracciones"],
+    index=0
+)
+
+st.sidebar.markdown("---")
+st.sidebar.markdown("### Nombres de estados")
+
+state_names = []
+
+for i in range(dim):
+    name = st.sidebar.text_input(
+        f"Estado {i}",
+        value=f"s{i}",
+        key=f"state_name_{i}"
+    )
+
+    state_names.append(name.strip() if name.strip() else f"s{i}")
+
+
+initialize_matrix_cells(dim, input_mode)
+
+
 
 
 # ── Botón de resolución en sidebar ────────────────────────────────────────────
