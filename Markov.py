@@ -6,17 +6,21 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+
 # ── Configuración de página ───────────────────────────────────────────────────
 st.set_page_config(page_title="Cadenas de Markov", layout="wide")
 
+
 # ── Constantes ────────────────────────────────────────────────────────────────
 WATERMARK_TEXT = "by M.Sc. Dilan Mogollón"
+
 COLORS = [
     "#3266ad", "#5DCAA5", "#AFA9EC", "#D85A30",
     "#EF9F27", "#E24B4A", "#7F77DD", "#1D9E75"
 ]
 
-# ── Watermark rojo fijo ──────────────────────────────────────────────────────
+
+# ── Estilos ───────────────────────────────────────────────────────────────────
 watermark_html = f"""
 <style>
 .watermark {{
@@ -39,6 +43,19 @@ watermark_html = f"""
 .row-label {{
     font-weight: 700;
     padding-top: 8px;
+}}
+.main-box {{
+    background-color: rgba(49, 51, 63, 0.08);
+    padding: 18px 22px;
+    border-radius: 14px;
+    border: 1px solid rgba(120, 120, 120, 0.25);
+    margin-bottom: 18px;
+}}
+.metric-box {{
+    background-color: rgba(49, 51, 63, 0.08);
+    padding: 14px 18px;
+    border-radius: 12px;
+    border: 1px solid rgba(120, 120, 120, 0.18);
 }}
 </style>
 <div class="watermark">{WATERMARK_TEXT}</div>
@@ -74,7 +91,9 @@ def parse_probability_fraction(value):
     try:
         if "/" in text:
             return float(Fraction(text))
+
         return float(text)
+
     except Exception as exc:
         raise ValueError(f"Valor inválido: {value}") from exc
 
@@ -115,6 +134,7 @@ def is_valid_stochastic(P: np.ndarray):
     if not np.allclose(row_sums, 1.0, atol=1e-6):
         bad = np.where(~np.isclose(row_sums, 1.0, atol=1e-6))[0]
         filas = [int(i) + 1 for i in bad]
+
         return False, f"Las filas {filas} no suman 1."
 
     return True, ""
@@ -145,6 +165,7 @@ def steady_state(P: np.ndarray):
 
     try:
         pi, _, rank, _ = np.linalg.lstsq(A, b, rcond=None)
+
         pi = np.real_if_close(pi)
         pi = np.clip(pi, 0, None)
 
@@ -163,9 +184,8 @@ def steady_state(P: np.ndarray):
 
 def classify_absorbing_states(P: np.ndarray, tol=1e-10):
     """
-    Un estado i es absorbente si:
-    P[i, i] = 1
-    y todas las demás probabilidades de esa fila son 0.
+    Un estado i es absorbente si P[i,i] = 1
+    y el resto de entradas de la fila son 0.
     """
     n = len(P)
     absorbing = []
@@ -185,9 +205,8 @@ def classify_absorbing_states(P: np.ndarray, tol=1e-10):
 def mean_recurrence_times(pi: np.ndarray, state_names):
     """
     Tiempo medio de recurrencia:
-    m_ii = 1 / pi_i
 
-    Esta interpretación es directa en cadenas irreducibles positivas recurrentes.
+    m_ii = 1 / pi_i
     """
     rows = []
 
@@ -253,23 +272,17 @@ def absorption_probabilities(P: np.ndarray, state_names):
     """
     Calcula probabilidades de absorción para cadenas absorbentes.
 
-    Forma canónica:
+    P = [ Q  R ]
+        [ 0  I ]
 
-        P = [ Q  R ]
-            [ 0  I ]
+    N = (I - Q)^(-1)
 
-    Matriz fundamental:
-
-        N = (I - Q)^(-1)
-
-    Matriz de probabilidades de absorción:
-
-        B = N R
+    B = N R
     """
     absorbing, transient = classify_absorbing_states(P)
 
     if len(absorbing) == 0:
-        return None, absorbing, transient, "La cadena no tiene estados absorbentes."
+        return None, None, absorbing, transient, "La cadena no tiene estados absorbentes."
 
     if len(transient) == 0:
         B = np.eye(len(absorbing))
@@ -280,7 +293,9 @@ def absorption_probabilities(P: np.ndarray, state_names):
             columns=[f"Absorción en {state_names[j]}" for j in absorbing]
         )
 
-        return B_df, absorbing, transient, None
+        N_df = None
+
+        return B_df, N_df, absorbing, transient, None
 
     Q = P[np.ix_(transient, transient)]
     R = P[np.ix_(transient, absorbing)]
@@ -297,10 +312,17 @@ def absorption_probabilities(P: np.ndarray, state_names):
             columns=[f"Absorción en {state_names[j]}" for j in absorbing]
         )
 
-        return B_df, absorbing, transient, None
+        N_df = pd.DataFrame(
+            np.round(N, 6),
+            index=[state_names[i] for i in transient],
+            columns=[state_names[i] for i in transient]
+        )
+
+        return B_df, N_df, absorbing, transient, None
 
     except np.linalg.LinAlgError:
         return (
+            None,
             None,
             absorbing,
             transient,
@@ -387,6 +409,7 @@ def build_graph_figure(P: np.ndarray, state_names, threshold=1e-12):
 
                 xs = x0 + ux * node_r
                 ys = y0 + uy * node_r
+
                 xe = x1 - ux * node_r
                 ye = y1 - uy * node_r
 
@@ -439,7 +462,7 @@ def build_graph_figure(P: np.ndarray, state_names, threshold=1e-12):
         textposition="middle center",
         marker=dict(
             size=42,
-            color=COLORS[:n],
+            color=[COLORS[i % len(COLORS)] for i in range(n)],
             line=dict(width=2, color="white")
         ),
         hovertemplate="Estado: %{text}<extra></extra>",
@@ -447,11 +470,155 @@ def build_graph_figure(P: np.ndarray, state_names, threshold=1e-12):
     ))
 
     fig.update_layout(
-        title="Grafo asociado",
-        height=420,
-        margin=dict(l=10, r=10, t=50, b=10),
+        title="Grafo asociado a la matriz de transición",
+        height=520,
+        margin=dict(l=10, r=10, t=60, b=10),
         xaxis=dict(visible=False),
         yaxis=dict(visible=False, scaleanchor="x", scaleratio=1),
+    )
+
+    return fig
+
+
+def build_evolution_figure(evol, state_names, n_steps):
+    fig_ev = go.Figure()
+    steps = np.arange(n_steps + 1)
+
+    for i, name in enumerate(state_names):
+        fig_ev.add_trace(
+            go.Scatter(
+                x=steps,
+                y=evol[:, i],
+                mode="lines+markers",
+                name=name,
+                line=dict(color=COLORS[i % len(COLORS)], width=2),
+                marker=dict(size=5)
+            )
+        )
+
+    fig_ev.update_layout(
+        title=f"Evolución de la distribución en {n_steps} pasos",
+        xaxis_title="Paso n",
+        yaxis_title="Probabilidad",
+        yaxis=dict(range=[0, 1.05]),
+        legend=dict(orientation="h", y=-0.22),
+        height=520,
+        margin=dict(b=80)
+    )
+
+    return fig_ev
+
+
+def build_stationary_figure(pi, state_names):
+    fig_pi = go.Figure(
+        go.Bar(
+            x=state_names,
+            y=pi,
+            text=[f"{v:.4f}" for v in pi],
+            textposition="outside",
+            marker_color=[COLORS[i % len(COLORS)] for i in range(len(state_names))]
+        )
+    )
+
+    fig_pi.update_layout(
+        title="Distribución de estado estable",
+        xaxis_title="Estado",
+        yaxis_title="Probabilidad estacionaria",
+        yaxis=dict(range=[0, max(0.05, float(max(pi)) * 1.25)]),
+        height=430,
+        margin=dict(b=60)
+    )
+
+    return fig_pi
+
+
+def build_recurrence_figure(recurrence_df):
+    df_plot = recurrence_df.copy()
+
+    df_plot = df_plot[
+        df_plot["Tiempo medio de recurrencia"].apply(lambda x: isinstance(x, (int, float)))
+    ]
+
+    if df_plot.empty:
+        return None
+
+    fig = go.Figure(
+        go.Bar(
+            x=df_plot["Estado"],
+            y=df_plot["Tiempo medio de recurrencia"],
+            text=[f"{v:.4f}" for v in df_plot["Tiempo medio de recurrencia"]],
+            textposition="outside",
+            marker_color=[
+                COLORS[i % len(COLORS)]
+                for i in range(len(df_plot))
+            ]
+        )
+    )
+
+    fig.update_layout(
+        title="Tiempos medios de recurrencia por estado",
+        xaxis_title="Estado",
+        yaxis_title="Tiempo medio de recurrencia",
+        height=430,
+        margin=dict(b=60)
+    )
+
+    return fig
+
+
+def build_absorption_figure(absorption_df):
+    if absorption_df is None or absorption_df.empty:
+        return None
+
+    fig = go.Figure()
+
+    for col in absorption_df.columns:
+        fig.add_trace(
+            go.Bar(
+                x=absorption_df.index,
+                y=absorption_df[col],
+                name=col,
+                text=[f"{v:.4f}" for v in absorption_df[col]],
+                textposition="outside"
+            )
+        )
+
+    fig.update_layout(
+        title="Probabilidades de absorción por estado transitorio",
+        xaxis_title="Estado inicial transitorio",
+        yaxis_title="Probabilidad de absorción",
+        yaxis=dict(range=[0, 1.05]),
+        barmode="group",
+        height=460,
+        margin=dict(b=70)
+    )
+
+    return fig
+
+
+def build_first_passage_heatmap(first_passage_df):
+    if first_passage_df is None or first_passage_df.empty:
+        return None
+
+    z = first_passage_df.astype(float).values
+
+    fig = go.Figure(
+        data=go.Heatmap(
+            z=z,
+            x=first_passage_df.columns,
+            y=first_passage_df.index,
+            text=np.round(z, 4),
+            texttemplate="%{text}",
+            colorscale="Viridis",
+            colorbar=dict(title="Pasos esperados")
+        )
+    )
+
+    fig.update_layout(
+        title="Mapa de calor de tiempos medios de primera pasada",
+        xaxis_title="Estado destino",
+        yaxis_title="Estado inicial",
+        height=520
     )
 
     return fig
@@ -485,6 +652,7 @@ def build_v0(dim, state_names, init_mode, init_state, custom_values):
     if init_mode == "Un estado puro":
         v0 = np.zeros(dim)
         v0[state_names.index(init_state)] = 1.0
+
         return v0
 
     v0 = np.array(custom_values, dtype=float)
@@ -500,7 +668,7 @@ def build_v0(dim, state_names, init_mode, init_state, custom_values):
 
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
-st.sidebar.header("Configuración")
+st.sidebar.header("Configuración general")
 
 dim = st.sidebar.selectbox(
     "Número de estados",
@@ -537,26 +705,75 @@ for i in range(dim):
     state_names.append(name.strip() if name.strip() else f"s{i}")
 
 
-# Inicializar celdas
 initialize_matrix_cells(dim, input_mode)
 
 
-# ── Título ────────────────────────────────────────────────────────────────────
+# ── Encabezado principal ──────────────────────────────────────────────────────
 st.title("Análisis de Cadenas de Markov")
 
+st.markdown(
+    """
+<div class="main-box">
+<h4>¿Qué contiene esta herramienta?</h4>
 
-# ── Formulario ────────────────────────────────────────────────────────────────
-with st.form("resolver_cadena_form", clear_on_submit=False):
-    st.markdown("### Matriz de transición")
+Esta aplicación permite analizar una cadena de Markov discreta a partir de su matriz de transición.
+Incluye validación de la matriz, representación gráfica de los estados, cálculo de probabilidades
+después de <b>n</b> pasos, evolución de la distribución inicial, distribución estacionaria,
+tiempos medios de recurrencia, tiempos medios de primera pasada y probabilidades de absorción
+cuando existen estados absorbentes.
 
-    if input_mode == "Decimales":
-        st.caption("Ingresa decimales, por ejemplo: 0.5, 0.25, 1.0")
-    else:
-        st.caption("Ingresa fracciones o decimales, por ejemplo: 1/2, 3/4, 0.25")
+<br><br>
 
-    col_matrix, col_graph = st.columns([1.3, 1])
+<b>Interpretación general:</b> cada fila de la matriz representa el estado actual y cada columna
+representa el estado al que puede pasar la cadena en el siguiente periodo.
+Por eso, cada fila debe sumar exactamente 1.
+</div>
+""",
+    unsafe_allow_html=True
+)
 
-    with col_matrix:
+
+# ── Firma actual ──────────────────────────────────────────────────────────────
+current_signature = (
+    dim,
+    input_mode,
+    tuple(state_names),
+    int(n_steps_sidebar)
+)
+
+
+# ── Pestañas ──────────────────────────────────────────────────────────────────
+tab_input, tab_graph, tab_nsteps, tab_stationary, tab_recurrence, tab_first_passage, tab_absorption = st.tabs(
+    [
+        "1. Ingresar matriz",
+        "2. Grafo de la matriz",
+        "3. n pasos y evolución",
+        "4. Estado estable",
+        "5. Tiempos de recurrencia",
+        "6. Primera pasada",
+        "7. Probabilidad de absorción"
+    ]
+)
+
+
+# ── TAB 1: Ingreso de matriz ──────────────────────────────────────────────────
+with tab_input:
+    st.markdown("## Ingreso de la matriz de transición")
+
+    st.info(
+        "En esta pestaña debes ingresar la matriz de transición. "
+        "Cada fila representa el estado actual y cada columna el estado futuro. "
+        "Todas las filas deben sumar 1."
+    )
+
+    with st.form("resolver_cadena_form", clear_on_submit=False):
+        st.markdown("### Matriz de transición")
+
+        if input_mode == "Decimales":
+            st.caption("Ingresa decimales, por ejemplo: 0.5, 0.25, 1.0")
+        else:
+            st.caption("Ingresa fracciones o decimales, por ejemplo: 1/2, 3/4, 0.25")
+
         header_cols = st.columns(dim + 1)
         header_cols[0].markdown("")
 
@@ -581,371 +798,464 @@ with st.form("resolver_cadena_form", clear_on_submit=False):
                     label_visibility="collapsed"
                 )
 
-    with col_graph:
-        st.markdown("#### Grafo")
-        st.info("El grafo se genera al pulsar **Resolver**.")
+        st.markdown("---")
+        st.markdown("### Estado inicial")
 
-    st.markdown("---")
-    st.markdown("### Estado inicial")
-
-    init_mode_form = st.radio(
-        "Tipo de distribución inicial",
-        ["Un estado puro", "Distribución personalizada"],
-        horizontal=True,
-        key="form_init_mode"
-    )
-
-    init_state_form = None
-    custom_values_form = []
-
-    if init_mode_form == "Un estado puro":
-        init_state_form = st.selectbox(
-            "Estado inicial",
-            state_names,
-            key=f"form_init_state_{dim}"
+        init_mode_form = st.radio(
+            "Tipo de distribución inicial",
+            ["Un estado puro", "Distribución personalizada"],
+            horizontal=True,
+            key="form_init_mode"
         )
 
-    else:
-        st.markdown("**Distribución inicial**")
+        init_state_form = None
+        custom_values_form = []
 
-        cols_v0 = st.columns(dim)
-
-        for i, c in enumerate(cols_v0):
-            value = c.number_input(
-                state_names[i],
-                min_value=0.0,
-                max_value=1.0,
-                value=round(1 / dim, 4),
-                step=0.01,
-                key=f"v0_{dim}_{i}"
+        if init_mode_form == "Un estado puro":
+            init_state_form = st.selectbox(
+                "Estado inicial",
+                state_names,
+                key=f"form_init_state_{dim}"
             )
-
-            custom_values_form.append(value)
-
-    st.markdown("---")
-
-    submitted = st.form_submit_button(
-        "Resolver",
-        use_container_width=True,
-        type="primary"
-    )
-
-
-# ── Resolver solo al enviar ───────────────────────────────────────────────────
-current_signature = (
-    dim,
-    input_mode,
-    tuple(state_names),
-    int(n_steps_sidebar)
-)
-
-if submitted:
-    try:
-        matrix_text = collect_matrix_text(dim)
-        P = parse_matrix_values(matrix_text, input_mode)
-
-        valid, msg = is_valid_stochastic(P)
-
-        if not valid:
-            st.session_state.pop("solution_data", None)
-            st.error(f"Matriz inválida: {msg}")
 
         else:
-            v0 = build_v0(
-                dim=dim,
-                state_names=state_names,
-                init_mode=init_mode_form,
-                init_state=init_state_form,
-                custom_values=custom_values_form
-            )
+            st.markdown("**Distribución inicial**")
 
-            n_steps = int(n_steps_sidebar)
+            cols_v0 = st.columns(dim)
 
-            evol = build_evolution(P, v0, n_steps)
-            Pn = mat_power(P, n_steps)
-            dist_n = evol[n_steps]
+            for i, c in enumerate(cols_v0):
+                value = c.number_input(
+                    state_names[i],
+                    min_value=0.0,
+                    max_value=1.0,
+                    value=round(1 / dim, 4),
+                    step=0.01,
+                    key=f"v0_{dim}_{i}"
+                )
 
-            pi, rank = steady_state(P)
+                custom_values_form.append(value)
 
-            # Nuevos cálculos
-            recurrence_df = None
+        st.markdown("---")
 
-            if pi is not None:
-                recurrence_df = mean_recurrence_times(pi, state_names)
+        submitted = st.form_submit_button(
+            "Resolver cadena de Markov",
+            use_container_width=True,
+            type="primary"
+        )
 
-            M_first = first_passage_times(P)
+    if submitted:
+        try:
+            matrix_text = collect_matrix_text(dim)
+            P = parse_matrix_values(matrix_text, input_mode)
 
-            first_passage_df = pd.DataFrame(
-                np.round(M_first, 6),
+            valid, msg = is_valid_stochastic(P)
+
+            if not valid:
+                st.session_state.pop("solution_data", None)
+                st.error(f"Matriz inválida: {msg}")
+
+            else:
+                v0 = build_v0(
+                    dim=dim,
+                    state_names=state_names,
+                    init_mode=init_mode_form,
+                    init_state=init_state_form,
+                    custom_values=custom_values_form
+                )
+
+                n_steps = int(n_steps_sidebar)
+
+                evol = build_evolution(P, v0, n_steps)
+                Pn = mat_power(P, n_steps)
+                dist_n = evol[n_steps]
+
+                pi, rank = steady_state(P)
+
+                recurrence_df = None
+
+                if pi is not None:
+                    recurrence_df = mean_recurrence_times(pi, state_names)
+
+                M_first = first_passage_times(P)
+
+                first_passage_df = pd.DataFrame(
+                    np.round(M_first, 6),
+                    index=state_names,
+                    columns=state_names
+                )
+
+                absorption_df, N_df, absorbing_states, transient_states, absorption_error = (
+                    absorption_probabilities(P, state_names)
+                )
+
+                st.session_state["solution_data"] = {
+                    "signature": current_signature,
+                    "P": P,
+                    "v0": v0,
+                    "n_steps": n_steps,
+                    "evol": evol,
+                    "Pn": Pn,
+                    "dist_n": dist_n,
+                    "pi": pi,
+                    "rank": rank,
+                    "state_names": state_names.copy(),
+                    "recurrence_df": recurrence_df,
+                    "first_passage_df": first_passage_df,
+                    "absorption_df": absorption_df,
+                    "N_df": N_df,
+                    "absorbing_states": absorbing_states,
+                    "transient_states": transient_states,
+                    "absorption_error": absorption_error
+                }
+
+                st.success("Modelo resuelto correctamente. Puedes revisar las demás pestañas.")
+
+                st.markdown("### Matriz ingresada")
+
+                P_df = pd.DataFrame(
+                    np.round(P, 6),
+                    index=state_names,
+                    columns=state_names
+                )
+
+                st.dataframe(
+                    P_df,
+                    use_container_width=True
+                )
+
+        except Exception as e:
+            st.session_state.pop("solution_data", None)
+            st.error(f"No se pudo resolver: {e}")
+
+
+# ── Recuperar solución ────────────────────────────────────────────────────────
+solution = st.session_state.get("solution_data")
+
+solution_is_valid = (
+    solution is not None
+    and solution.get("signature") == current_signature
+)
+
+if solution_is_valid:
+    P = solution["P"]
+    v0 = solution["v0"]
+    n_steps = solution["n_steps"]
+    evol = solution["evol"]
+    Pn = solution["Pn"]
+    dist_n = solution["dist_n"]
+    pi = solution["pi"]
+    rank = solution["rank"]
+
+    recurrence_df = solution.get("recurrence_df")
+    first_passage_df = solution.get("first_passage_df")
+    absorption_df = solution.get("absorption_df")
+    N_df = solution.get("N_df")
+    absorbing_states = solution.get("absorbing_states", [])
+    transient_states = solution.get("transient_states", [])
+    absorption_error = solution.get("absorption_error")
+
+else:
+    P = None
+    v0 = None
+    n_steps = None
+    evol = None
+    Pn = None
+    dist_n = None
+    pi = None
+    rank = None
+    recurrence_df = None
+    first_passage_df = None
+    absorption_df = None
+    N_df = None
+    absorbing_states = []
+    transient_states = []
+    absorption_error = None
+
+
+def require_solution_message():
+    if solution is None:
+        st.info("Primero ingresa la matriz y pulsa **Resolver cadena de Markov** en la pestaña 1.")
+    else:
+        st.warning("Cambiaste la configuración. Vuelve a pulsar **Resolver cadena de Markov** en la pestaña 1.")
+
+
+# ── TAB 2: Grafo ──────────────────────────────────────────────────────────────
+with tab_graph:
+    st.markdown("## Grafo de la matriz de transición")
+
+    if not solution_is_valid:
+        require_solution_message()
+
+    else:
+        colA, colB = st.columns([1, 1.3])
+
+        with colA:
+            st.markdown("### Matriz de transición")
+
+            P_df = pd.DataFrame(
+                np.round(P, 6),
                 index=state_names,
                 columns=state_names
             )
 
-            absorption_df, absorbing_states, transient_states, absorption_error = (
-                absorption_probabilities(P, state_names)
+            st.dataframe(
+                P_df,
+                use_container_width=True,
+                height=460
             )
 
-            st.session_state["solution_data"] = {
-                "signature": current_signature,
-                "P": P,
-                "v0": v0,
-                "n_steps": n_steps,
-                "evol": evol,
-                "Pn": Pn,
-                "dist_n": dist_n,
-                "pi": pi,
-                "rank": rank,
-                "state_names": state_names.copy(),
-                "recurrence_df": recurrence_df,
-                "first_passage_df": first_passage_df,
-                "absorption_df": absorption_df,
-                "absorbing_states": absorbing_states,
-                "transient_states": transient_states,
-                "absorption_error": absorption_error
-            }
-
-            st.success("Modelo resuelto correctamente.")
-
-    except Exception as e:
-        st.session_state.pop("solution_data", None)
-        st.error(f"No se pudo resolver: {e}")
+        with colB:
+            fig_graph = build_graph_figure(P, state_names)
+            st.plotly_chart(fig_graph, use_container_width=True)
 
 
-# ── Mostrar resultados solo si la firma coincide ──────────────────────────────
-solution = st.session_state.get("solution_data")
+# ── TAB 3: n pasos y evolución ────────────────────────────────────────────────
+with tab_nsteps:
+    st.markdown("## Matriz en n pasos y evolución de probabilidades")
 
-if solution is None:
-    st.info("Completa la matriz y pulsa **Resolver** para generar el análisis.")
-    st.stop()
+    if not solution_is_valid:
+        require_solution_message()
 
-if solution["signature"] != current_signature:
-    st.info("Cambiaste la configuración. Pulsa **Resolver** para actualizar los resultados.")
-    st.stop()
+    else:
+        st.markdown(f"### Matriz $P^{{{n_steps}}}$")
 
-
-P = solution["P"]
-v0 = solution["v0"]
-n_steps = solution["n_steps"]
-evol = solution["evol"]
-Pn = solution["Pn"]
-dist_n = solution["dist_n"]
-pi = solution["pi"]
-rank = solution["rank"]
-
-recurrence_df = solution.get("recurrence_df")
-first_passage_df = solution.get("first_passage_df")
-absorption_df = solution.get("absorption_df")
-absorbing_states = solution.get("absorbing_states", [])
-transient_states = solution.get("transient_states", [])
-absorption_error = solution.get("absorption_error")
-
-
-# ── Matriz y grafo ────────────────────────────────────────────────────────────
-st.markdown("---")
-st.markdown("### Matriz y grafo de la cadena")
-
-colA, colB = st.columns([1.15, 1])
-
-with colA:
-    P_df = pd.DataFrame(
-        np.round(P, 6),
-        index=state_names,
-        columns=state_names
-    )
-
-    st.dataframe(
-        P_df,
-        use_container_width=True,
-        height=420
-    )
-
-with colB:
-    fig_graph = build_graph_figure(P, state_names)
-    st.plotly_chart(fig_graph, use_container_width=True)
-
-
-# ── Matriz P^n ────────────────────────────────────────────────────────────────
-st.markdown("---")
-st.markdown(f"### Matriz $P^{{{n_steps}}}$")
-
-Pn_df = pd.DataFrame(
-    np.round(Pn, 6),
-    index=state_names,
-    columns=state_names
-)
-
-st.dataframe(Pn_df, use_container_width=True)
-
-
-# ── Evolución ─────────────────────────────────────────────────────────────────
-st.markdown("---")
-st.markdown(f"### Evolución en {n_steps} pasos")
-
-fig_ev = go.Figure()
-steps = np.arange(n_steps + 1)
-
-for i, name in enumerate(state_names):
-    fig_ev.add_trace(
-        go.Scatter(
-            x=steps,
-            y=evol[:, i],
-            mode="lines",
-            name=name,
-            line=dict(color=COLORS[i % len(COLORS)], width=2)
+        Pn_df = pd.DataFrame(
+            np.round(Pn, 6),
+            index=state_names,
+            columns=state_names
         )
-    )
-
-fig_ev.update_layout(
-    title=f"Evolución de la distribución en {n_steps} pasos",
-    xaxis_title="Paso n",
-    yaxis_title="Probabilidad",
-    yaxis=dict(range=[0, 1.05]),
-    legend=dict(orientation="h", y=-0.22),
-    height=520,
-    margin=dict(b=80)
-)
-
-st.plotly_chart(fig_ev, use_container_width=True)
-
-
-# ── Probabilidad en el paso n ─────────────────────────────────────────────────
-st.markdown("---")
-st.markdown(f"### Probabilidad en el paso {n_steps}")
-
-dist_df = pd.DataFrame({
-    "Estado": state_names,
-    f"P(X_{n_steps})": [round(float(x), 6) for x in dist_n]
-})
-
-st.dataframe(
-    dist_df,
-    use_container_width=True,
-    hide_index=True
-)
-
-
-# ── Estado estable ────────────────────────────────────────────────────────────
-st.markdown("---")
-st.markdown("### Estado estable π")
-
-if pi is None:
-    st.error("No fue posible calcular la distribución estacionaria.")
-else:
-    col1, col2 = st.columns([1, 2])
-
-    with col1:
-        pi_df = pd.DataFrame({
-            "Estado": state_names,
-            "π": [round(float(x), 6) for x in pi]
-        })
 
         st.dataframe(
-            pi_df,
-            use_container_width=True,
-            hide_index=True,
-            height=420
-        )
-
-    with col2:
-        fig_pi = go.Figure(
-            go.Bar(
-                x=state_names,
-                y=pi,
-                text=[f"{v:.4f}" for v in pi],
-                textposition="outside",
-                marker_color=COLORS[:dim]
-            )
-        )
-
-        fig_pi.update_layout(
-            title="Distribución de estado estable",
-            xaxis_title="Estado",
-            yaxis_title="Probabilidad",
-            yaxis=dict(range=[0, max(0.05, float(max(pi)) * 1.25)]),
-            height=420,
-            margin=dict(b=60)
-        )
-
-        st.plotly_chart(fig_pi, use_container_width=True)
-
-
-# ── Tiempos de recurrencia ────────────────────────────────────────────────────
-st.markdown("---")
-st.markdown("### Tiempos medios de recurrencia")
-
-st.latex(r"m_{ii} = \frac{1}{\pi_i}")
-
-st.info(
-    "El tiempo medio de recurrencia indica el número esperado de pasos para "
-    "regresar a un estado, una vez que la cadena ya se encuentra en ese estado. "
-    "Este cálculo usa la distribución estacionaria π."
-)
-
-if recurrence_df is not None:
-    st.dataframe(
-        recurrence_df,
-        use_container_width=True,
-        hide_index=True
-    )
-else:
-    st.warning(
-        "No fue posible calcular los tiempos de recurrencia porque no se obtuvo "
-        "una distribución estacionaria π."
-    )
-
-
-# ── Tiempos de primera pasada ─────────────────────────────────────────────────
-st.markdown("---")
-st.markdown("### Tiempos medios de primera pasada")
-
-st.latex(r"m_{ij} = 1 + \sum_{k \neq j} p_{ik}m_{kj}, \quad i \neq j")
-
-st.info(
-    "El tiempo medio de primera pasada m_ij representa el número esperado de pasos "
-    "para llegar por primera vez al estado j, comenzando desde el estado i."
-)
-
-if first_passage_df is not None:
-    st.dataframe(
-        first_passage_df,
-        use_container_width=True
-    )
-else:
-    st.warning("No fue posible calcular los tiempos de primera pasada.")
-
-
-# ── Probabilidades de absorción ───────────────────────────────────────────────
-st.markdown("---")
-st.markdown("### Probabilidades de absorción")
-
-st.latex(r"B = N R, \qquad N = (I - Q)^{-1}")
-
-st.info(
-    "La probabilidad de absorción indica la probabilidad de terminar en cada estado "
-    "absorbente, partiendo desde un estado transitorio."
-)
-
-if len(absorbing_states) > 0:
-    absorbing_names = [state_names[i] for i in absorbing_states]
-    transient_names = [state_names[i] for i in transient_states]
-
-    st.markdown("**Estados absorbentes detectados:**")
-    st.write(absorbing_names)
-
-    if len(transient_names) > 0:
-        st.markdown("**Estados transitorios:**")
-        st.write(transient_names)
-
-    if absorption_df is not None:
-        st.dataframe(
-            absorption_df,
+            Pn_df,
             use_container_width=True
         )
-    else:
-        st.warning(absorption_error)
 
-else:
-    st.warning(
-        "La cadena no tiene estados absorbentes. Por tanto, no aplica el cálculo "
-        "de probabilidades de absorción."
-    )
+        st.markdown("---")
+
+        col1, col2 = st.columns([1, 1])
+
+        with col1:
+            st.markdown(f"### Probabilidad en el paso {n_steps}")
+
+            dist_df = pd.DataFrame({
+                "Estado": state_names,
+                f"P(X_{n_steps})": [round(float(x), 6) for x in dist_n]
+            })
+
+            st.dataframe(
+                dist_df,
+                use_container_width=True,
+                hide_index=True
+            )
+
+        with col2:
+            st.markdown("### Distribución inicial")
+
+            v0_df = pd.DataFrame({
+                "Estado": state_names,
+                "P(X_0)": [round(float(x), 6) for x in v0]
+            })
+
+            st.dataframe(
+                v0_df,
+                use_container_width=True,
+                hide_index=True
+            )
+
+        st.markdown("---")
+        st.markdown(f"### Evolución en {n_steps} pasos")
+
+        fig_ev = build_evolution_figure(evol, state_names, n_steps)
+        st.plotly_chart(fig_ev, use_container_width=True)
+
+
+# ── TAB 4: Estado estable ─────────────────────────────────────────────────────
+with tab_stationary:
+    st.markdown("## Estado estable")
+
+    if not solution_is_valid:
+        require_solution_message()
+
+    else:
+        st.latex(r"\pi P = \pi, \qquad \sum_i \pi_i = 1")
+
+        st.info(
+            "La distribución estacionaria π representa el comportamiento de largo plazo "
+            "de la cadena cuando existe una distribución estable."
+        )
+
+        if pi is None:
+            st.error("No fue posible calcular la distribución estacionaria.")
+
+        else:
+            col1, col2 = st.columns([1, 2])
+
+            with col1:
+                pi_df = pd.DataFrame({
+                    "Estado": state_names,
+                    "π": [round(float(x), 6) for x in pi]
+                })
+
+                st.dataframe(
+                    pi_df,
+                    use_container_width=True,
+                    hide_index=True,
+                    height=420
+                )
+
+            with col2:
+                fig_pi = build_stationary_figure(pi, state_names)
+                st.plotly_chart(fig_pi, use_container_width=True)
+
+
+# ── TAB 5: Tiempos de recurrencia ─────────────────────────────────────────────
+with tab_recurrence:
+    st.markdown("## Tiempos medios de recurrencia")
+
+    if not solution_is_valid:
+        require_solution_message()
+
+    else:
+        st.latex(r"m_{ii} = \frac{1}{\pi_i}")
+
+        st.info(
+            "El tiempo medio de recurrencia indica el número esperado de pasos para "
+            "regresar a un estado, dado que la cadena parte de ese mismo estado. "
+            "Este cálculo se obtiene a partir de la distribución estacionaria."
+        )
+
+        if recurrence_df is not None:
+            col1, col2 = st.columns([1, 1.5])
+
+            with col1:
+                st.dataframe(
+                    recurrence_df,
+                    use_container_width=True,
+                    hide_index=True
+                )
+
+            with col2:
+                fig_rec = build_recurrence_figure(recurrence_df)
+
+                if fig_rec is not None:
+                    st.plotly_chart(fig_rec, use_container_width=True)
+                else:
+                    st.warning("No hay valores finitos para graficar.")
+
+            st.warning(
+                "Interpretación cuidadosa: la fórmula m_ii = 1/π_i es especialmente adecuada "
+                "para cadenas irreducibles positivas recurrentes. Si la cadena tiene estados "
+                "absorbentes o varias clases cerradas, el resultado puede requerir una lectura "
+                "más técnica."
+            )
+
+        else:
+            st.warning(
+                "No fue posible calcular los tiempos de recurrencia porque no se obtuvo "
+                "una distribución estacionaria π."
+            )
+
+
+# ── TAB 6: Primera pasada ─────────────────────────────────────────────────────
+with tab_first_passage:
+    st.markdown("## Tiempos medios de primera pasada")
+
+    if not solution_is_valid:
+        require_solution_message()
+
+    else:
+        st.latex(r"m_{ij} = 1 + \sum_{k \neq j} p_{ik}m_{kj}, \qquad i \neq j")
+
+        st.info(
+            "El tiempo medio de primera pasada m_ij representa el número esperado de pasos "
+            "para llegar por primera vez al estado j, comenzando desde el estado i."
+        )
+
+        if first_passage_df is not None:
+            st.markdown("### Matriz de tiempos medios de primera pasada")
+
+            st.dataframe(
+                first_passage_df,
+                use_container_width=True
+            )
+
+            st.markdown("---")
+            st.markdown("### Gráfica tipo mapa de calor")
+
+            fig_fp = build_first_passage_heatmap(first_passage_df)
+
+            if fig_fp is not None:
+                st.plotly_chart(fig_fp, use_container_width=True)
+            else:
+                st.warning("No fue posible generar la gráfica de primera pasada.")
+
+        else:
+            st.warning("No fue posible calcular los tiempos de primera pasada.")
+
+
+# ── TAB 7: Probabilidad de absorción ──────────────────────────────────────────
+with tab_absorption:
+    st.markdown("## Probabilidad de absorción")
+
+    if not solution_is_valid:
+        require_solution_message()
+
+    else:
+        st.latex(r"N = (I - Q)^{-1}")
+        st.latex(r"B = NR")
+
+        st.info(
+            "La probabilidad de absorción indica la probabilidad de terminar en cada estado "
+            "absorbente, partiendo desde un estado transitorio."
+        )
+
+        if len(absorbing_states) > 0:
+            absorbing_names = [state_names[i] for i in absorbing_states]
+            transient_names = [state_names[i] for i in transient_states]
+
+            col1, col2 = st.columns([1, 1])
+
+            with col1:
+                st.markdown("### Estados absorbentes detectados")
+                st.write(absorbing_names)
+
+            with col2:
+                st.markdown("### Estados transitorios")
+                if len(transient_names) > 0:
+                    st.write(transient_names)
+                else:
+                    st.write("No hay estados transitorios.")
+
+            if N_df is not None:
+                st.markdown("---")
+                st.markdown("### Matriz fundamental N")
+
+                st.dataframe(
+                    N_df,
+                    use_container_width=True
+                )
+
+            if absorption_df is not None:
+                st.markdown("---")
+                st.markdown("### Matriz de probabilidades de absorción B")
+
+                st.dataframe(
+                    absorption_df,
+                    use_container_width=True
+                )
+
+                fig_abs = build_absorption_figure(absorption_df)
+
+                if fig_abs is not None:
+                    st.markdown("---")
+                    st.markdown("### Gráfica de probabilidades de absorción")
+                    st.plotly_chart(fig_abs, use_container_width=True)
+
+            else:
+                st.warning(absorption_error)
+
+        else:
+            st.warning(
+                "La cadena no tiene estados absorbentes. Por tanto, no aplica el cálculo "
+                "de probabilidades de absorción."
+            )
