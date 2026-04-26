@@ -1089,7 +1089,7 @@ with tab_first_passage:
         require_solution_message()
 
     else:
-        st.latex(r"m_{ij} = 1 + \sum_{k \neq j} p_{ik}m_{kj}, \qquad i \neq j")
+        st.latex(r"\mu_{ij} = 1 + \sum_{k \neq j} p_{ik}m_{kj}, \qquad i \neq j")
 
         st.info(
             "El tiempo medio de primera pasada m_ij representa el número esperado de pasos "
