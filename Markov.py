@@ -760,49 +760,6 @@ def mostrar_tarjeta_estados(titulo, estados, tipo, nota):
         unsafe_allow_html=True
     )
 
-# ── Estado inicial en sidebar ─────────────────────────────────────────────────
-st.sidebar.markdown("---")
-st.sidebar.markdown("### Estado inicial")
-
-init_mode_sidebar = st.sidebar.radio(
-    "Tipo de distribución inicial",
-    ["Un estado puro", "Distribución personalizada"],
-    key="sidebar_init_mode"
-)
-
-init_state_sidebar = None
-custom_values_sidebar = []
-
-if init_mode_sidebar == "Un estado puro":
-    init_state_sidebar = st.sidebar.selectbox(
-        "Estado inicial",
-        state_names,
-        key=f"sidebar_init_state_{dim}"
-    )
-
-else:
-    st.sidebar.markdown("**Distribución inicial**")
-
-    for i, state in enumerate(state_names):
-        value = st.sidebar.number_input(
-            f"P(X₀ = {state})",
-            min_value=0.0,
-            max_value=1.0,
-            value=round(1 / dim, 4),
-            step=0.01,
-            key=f"sidebar_v0_{dim}_{i}"
-        )
-
-        custom_values_sidebar.append(value)
-
-    total_v0_sidebar = sum(custom_values_sidebar)
-
-    if abs(total_v0_sidebar - 1.0) > 1e-6:
-        st.sidebar.warning(
-            f"La suma actual es {total_v0_sidebar:.4f}. "
-            "El programa normalizará automáticamente la distribución."
-        )
-
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 st.sidebar.header("Configuración general")
@@ -827,34 +784,87 @@ input_mode = st.sidebar.radio(
     index=0
 )
 
-st.sidebar.markdown("---")
-st.sidebar.markdown("### Nombres de estados")
+# Estos contenedores permiten que el estado inicial se vea antes,
+# aunque los nombres se calculen correctamente.
+init_container = st.sidebar.container()
+button_container = st.sidebar.container()
+names_container = st.sidebar.container()
 
-state_names = []
 
-for i in range(dim):
-    name = st.sidebar.text_input(
-        f"Estado {i}",
-        value=f"s{i}",
-        key=f"state_name_{i}"
-    )
+# ── Nombres de estados ────────────────────────────────────────────────────────
+with names_container:
+    st.markdown("---")
+    st.markdown("### Nombres de estados")
 
-    state_names.append(name.strip() if name.strip() else f"s{i}")
+    state_names = []
+
+    for i in range(dim):
+        name = st.text_input(
+            f"Estado {i}",
+            value=f"s{i}",
+            key=f"state_name_{i}"
+        )
+
+        state_names.append(name.strip() if name.strip() else f"s{i}")
 
 
 initialize_matrix_cells(dim, input_mode)
 
 
+# ── Estado inicial visualmente antes de los nombres ───────────────────────────
+with init_container:
+    st.markdown("---")
+    st.markdown("### Estado inicial")
+
+    init_mode_sidebar = st.radio(
+        "Tipo de distribución inicial",
+        ["Un estado puro", "Distribución personalizada"],
+        key="sidebar_init_mode"
+    )
+
+    init_state_sidebar = None
+    custom_values_sidebar = []
+
+    if init_mode_sidebar == "Un estado puro":
+        init_state_sidebar = st.selectbox(
+            "Estado inicial",
+            state_names,
+            key=f"sidebar_init_state_{dim}"
+        )
+
+    else:
+        st.markdown("**Distribución inicial**")
+
+        for i, state in enumerate(state_names):
+            value = st.number_input(
+                f"P(X₀ = {state})",
+                min_value=0.0,
+                max_value=1.0,
+                value=round(1 / dim, 4),
+                step=0.01,
+                key=f"sidebar_v0_{dim}_{i}"
+            )
+
+            custom_values_sidebar.append(value)
+
+        total_v0_sidebar = sum(custom_values_sidebar)
+
+        if abs(total_v0_sidebar - 1.0) > 1e-6:
+            st.warning(
+                f"La suma actual es {total_v0_sidebar:.4f}. "
+                "El programa normalizará automáticamente la distribución."
+            )
 
 
 # ── Botón de resolución en sidebar ────────────────────────────────────────────
-st.sidebar.markdown("---")
+with button_container:
+    st.markdown("---")
 
-submitted = st.sidebar.button(
-    "Resolver cadena de Markov",
-    use_container_width=True,
-    type="primary"
-)
+    submitted = st.button(
+        "Resolver cadena de Markov",
+        use_container_width=True,
+        type="primary"
+    )
 
 
 # ── Encabezado principal ──────────────────────────────────────────────────────
