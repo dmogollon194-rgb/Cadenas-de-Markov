@@ -622,7 +622,7 @@ def build_absorption_figure(absorption_df):
     fig.update_layout(
         title="Probabilidades de absorción por estado transitorio",
         xaxis_title="Estado inicial transitorio",
-        yaxis_title="Probabilidad de absorción",
+        yaxis_title="Prob. de absorción",
         yaxis=dict(range=[0, 1.05]),
         barmode="group",
         height=460,
@@ -819,11 +819,11 @@ current_signature = (
 tab_matrix_graph, tab_nsteps, tab_stationary, tab_recurrence, tab_first_passage, tab_absorption = st.tabs(
     [
         "Matriz y grafo",
-        "N-pasos y evolución",
+        "N-pasos",
         "Estado estable",
         "Tiempos de recurrencia",
         "Primera pasada",
-        "Probabilidad de absorción"
+        "Prob. de absorción"
     ]
 )
 
@@ -1252,7 +1252,7 @@ with tab_first_passage:
 
 # ── TAB 6: Probabilidad de absorción ──────────────────────────────────────────
 with tab_absorption:
-    st.markdown("## Probabilidad de absorción")
+    st.markdown("## Prob. de absorción")
 
     if not solution_is_valid:
         require_solution_message()
