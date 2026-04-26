@@ -1147,10 +1147,6 @@ partiendo desde un estado transitorio.
         )
 
         st.markdown("---")
-        st.markdown("### Forma matricial equivalente")
-
-        st.latex(r"N=(I-Q)^{-1}")
-        st.latex(r"B=NR")
 
         if len(absorbing_states) > 0:
             absorbing_names = [state_names[i] for i in absorbing_states]
