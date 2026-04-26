@@ -44,18 +44,12 @@ watermark_html = f"""
     font-weight: 700;
     padding-top: 8px;
 }}
-.main-box {{
+.info-box {{
     background-color: rgba(49, 51, 63, 0.08);
-    padding: 18px 22px;
+    padding: 16px 20px;
     border-radius: 14px;
     border: 1px solid rgba(120, 120, 120, 0.25);
     margin-bottom: 18px;
-}}
-.metric-box {{
-    background-color: rgba(49, 51, 63, 0.08);
-    padding: 14px 18px;
-    border-radius: 12px;
-    border: 1px solid rgba(120, 120, 120, 0.18);
 }}
 </style>
 <div class="watermark">{WATERMARK_TEXT}</div>
@@ -134,7 +128,6 @@ def is_valid_stochastic(P: np.ndarray):
     if not np.allclose(row_sums, 1.0, atol=1e-6):
         bad = np.where(~np.isclose(row_sums, 1.0, atol=1e-6))[0]
         filas = [int(i) + 1 for i in bad]
-
         return False, f"Las filas {filas} no suman 1."
 
     return True, ""
@@ -183,10 +176,6 @@ def steady_state(P: np.ndarray):
 
 
 def classify_absorbing_states(P: np.ndarray, tol=1e-10):
-    """
-    Un estado i es absorbente si P[i,i] = 1
-    y el resto de entradas de la fila son 0.
-    """
     n = len(P)
     absorbing = []
 
@@ -203,11 +192,6 @@ def classify_absorbing_states(P: np.ndarray, tol=1e-10):
 
 
 def mean_recurrence_times(pi: np.ndarray, state_names):
-    """
-    Tiempo medio de recurrencia:
-
-    m_ii = 1 / pi_i
-    """
     rows = []
 
     for i, name in enumerate(state_names):
@@ -228,15 +212,6 @@ def mean_recurrence_times(pi: np.ndarray, state_names):
 
 
 def first_passage_times(P: np.ndarray):
-    """
-    Calcula el tiempo esperado de primera pasada m_ij desde i hasta j.
-
-    Para cada destino j:
-
-    m_jj = 0
-
-    m_ij = 1 + sum_{k != j} p_ik m_kj, para i != j
-    """
     n = len(P)
     M = np.zeros((n, n), dtype=float)
 
@@ -269,16 +244,6 @@ def first_passage_times(P: np.ndarray):
 
 
 def absorption_probabilities(P: np.ndarray, state_names):
-    """
-    Calcula probabilidades de absorción para cadenas absorbentes.
-
-    P = [ Q  R ]
-        [ 0  I ]
-
-    N = (I - Q)^(-1)
-
-    B = N R
-    """
     absorbing, transient = classify_absorbing_states(P)
 
     if len(absorbing) == 0:
@@ -711,27 +676,6 @@ initialize_matrix_cells(dim, input_mode)
 # ── Encabezado principal ──────────────────────────────────────────────────────
 st.title("Análisis de Cadenas de Markov")
 
-st.markdown(
-    """
-<div class="main-box">
-<h4>¿Qué contiene esta herramienta?</h4>
-
-Esta aplicación permite analizar una cadena de Markov discreta a partir de su matriz de transición.
-Incluye validación de la matriz, representación gráfica de los estados, cálculo de probabilidades
-después de <b>n</b> pasos, evolución de la distribución inicial, distribución estacionaria,
-tiempos medios de recurrencia, tiempos medios de primera pasada y probabilidades de absorción
-cuando existen estados absorbentes.
-
-<br><br>
-
-<b>Interpretación general:</b> cada fila de la matriz representa el estado actual y cada columna
-representa el estado al que puede pasar la cadena en el siguiente periodo.
-Por eso, cada fila debe sumar exactamente 1.
-</div>
-""",
-    unsafe_allow_html=True
-)
-
 
 # ── Firma actual ──────────────────────────────────────────────────────────────
 current_signature = (
@@ -743,28 +687,21 @@ current_signature = (
 
 
 # ── Pestañas ──────────────────────────────────────────────────────────────────
-tab_input, tab_graph, tab_nsteps, tab_stationary, tab_recurrence, tab_first_passage, tab_absorption = st.tabs(
+tab_matrix_graph, tab_nsteps, tab_stationary, tab_recurrence, tab_first_passage, tab_absorption = st.tabs(
     [
-        "1. Ingresar matriz",
-        "2. Grafo de la matriz",
-        "3. n pasos y evolución",
-        "4. Estado estable",
-        "5. Tiempos de recurrencia",
-        "6. Primera pasada",
-        "7. Probabilidad de absorción"
+        "1. Matriz y grafo",
+        "2. n pasos y evolución",
+        "3. Estado estable",
+        "4. Tiempos de recurrencia",
+        "5. Primera pasada",
+        "6. Probabilidad de absorción"
     ]
 )
 
 
-# ── TAB 1: Ingreso de matriz ──────────────────────────────────────────────────
-with tab_input:
-    st.markdown("## Ingreso de la matriz de transición")
-
-    st.info(
-        "En esta pestaña debes ingresar la matriz de transición. "
-        "Cada fila representa el estado actual y cada columna el estado futuro. "
-        "Todas las filas deben sumar 1."
-    )
+# ── TAB 1: Matriz y grafo ─────────────────────────────────────────────────────
+with tab_matrix_graph:
+    st.markdown("## Ingreso de matriz y grafo de transición")
 
     with st.form("resolver_cadena_form", clear_on_submit=False):
         st.markdown("### Matriz de transición")
@@ -908,20 +845,7 @@ with tab_input:
                     "absorption_error": absorption_error
                 }
 
-                st.success("Modelo resuelto correctamente. Puedes revisar las demás pestañas.")
-
-                st.markdown("### Matriz ingresada")
-
-                P_df = pd.DataFrame(
-                    np.round(P, 6),
-                    index=state_names,
-                    columns=state_names
-                )
-
-                st.dataframe(
-                    P_df,
-                    use_container_width=True
-                )
+                st.success("Modelo resuelto correctamente.")
 
         except Exception as e:
             st.session_state.pop("solution_data", None)
@@ -979,18 +903,19 @@ def require_solution_message():
         st.warning("Cambiaste la configuración. Vuelve a pulsar **Resolver cadena de Markov** en la pestaña 1.")
 
 
-# ── TAB 2: Grafo ──────────────────────────────────────────────────────────────
-with tab_graph:
-    st.markdown("## Grafo de la matriz de transición")
+# ── Mostrar grafo en la misma pestaña de matriz ───────────────────────────────
+with tab_matrix_graph:
+    st.markdown("---")
+    st.markdown("## Grafo de la matriz")
 
     if not solution_is_valid:
-        require_solution_message()
+        st.info("Cuando resuelvas la cadena, aquí aparecerán la matriz validada y su grafo.")
 
     else:
         colA, colB = st.columns([1, 1.3])
 
         with colA:
-            st.markdown("### Matriz de transición")
+            st.markdown("### Matriz validada")
 
             P_df = pd.DataFrame(
                 np.round(P, 6),
@@ -1009,7 +934,7 @@ with tab_graph:
             st.plotly_chart(fig_graph, use_container_width=True)
 
 
-# ── TAB 3: n pasos y evolución ────────────────────────────────────────────────
+# ── TAB 2: n pasos y evolución ────────────────────────────────────────────────
 with tab_nsteps:
     st.markdown("## Matriz en n pasos y evolución de probabilidades")
 
@@ -1069,7 +994,7 @@ with tab_nsteps:
         st.plotly_chart(fig_ev, use_container_width=True)
 
 
-# ── TAB 4: Estado estable ─────────────────────────────────────────────────────
+# ── TAB 3: Estado estable ─────────────────────────────────────────────────────
 with tab_stationary:
     st.markdown("## Estado estable")
 
@@ -1108,7 +1033,7 @@ with tab_stationary:
                 st.plotly_chart(fig_pi, use_container_width=True)
 
 
-# ── TAB 5: Tiempos de recurrencia ─────────────────────────────────────────────
+# ── TAB 4: Tiempos de recurrencia ─────────────────────────────────────────────
 with tab_recurrence:
     st.markdown("## Tiempos medios de recurrencia")
 
@@ -1156,7 +1081,7 @@ with tab_recurrence:
             )
 
 
-# ── TAB 6: Primera pasada ─────────────────────────────────────────────────────
+# ── TAB 5: Primera pasada ─────────────────────────────────────────────────────
 with tab_first_passage:
     st.markdown("## Tiempos medios de primera pasada")
 
@@ -1193,7 +1118,7 @@ with tab_first_passage:
             st.warning("No fue posible calcular los tiempos de primera pasada.")
 
 
-# ── TAB 7: Probabilidad de absorción ──────────────────────────────────────────
+# ── TAB 6: Probabilidad de absorción ──────────────────────────────────────────
 with tab_absorption:
     st.markdown("## Probabilidad de absorción")
 
@@ -1201,13 +1126,31 @@ with tab_absorption:
         require_solution_message()
 
     else:
-        st.latex(r"N = (I - Q)^{-1}")
-        st.latex(r"B = NR")
+        st.markdown(
+            """
+<div class="info-box">
+<h4>Interpretación</h4>
+Representa la probabilidad de que la cadena termine absorbida en un estado absorbente,
+partiendo desde un estado transitorio.
+</div>
+""",
+            unsafe_allow_html=True
+        )
+
+        st.latex(r"b_{ij}=p_{ij}+\sum_{k\ \text{transitorio}}p_{ik}b_{kj}")
 
         st.info(
-            "La probabilidad de absorción indica la probabilidad de terminar en cada estado "
-            "absorbente, partiendo desde un estado transitorio."
+            "En esta expresión, b_ij es la probabilidad de absorción en el estado absorbente j "
+            "cuando la cadena inicia en el estado transitorio i. El término p_ij representa una "
+            "absorción directa, mientras que la suma considera los caminos que pasan primero por "
+            "otros estados transitorios."
         )
+
+        st.markdown("---")
+        st.markdown("### Forma matricial equivalente")
+
+        st.latex(r"N=(I-Q)^{-1}")
+        st.latex(r"B=NR")
 
         if len(absorbing_states) > 0:
             absorbing_names = [state_names[i] for i in absorbing_states]
