@@ -35,15 +35,18 @@ watermark_html = f"""
     z-index: 9999;
     pointer-events: none;
 }}
+
 .matrix-label {{
     font-weight: 700;
     text-align: center;
     padding-top: 8px;
 }}
+
 .row-label {{
     font-weight: 700;
     padding-top: 8px;
 }}
+
 .info-box {{
     background-color: rgba(49, 51, 63, 0.08);
     padding: 16px 20px;
@@ -51,9 +54,69 @@ watermark_html = f"""
     border: 1px solid rgba(120, 120, 120, 0.25);
     margin-bottom: 18px;
 }}
+
+.estado-card {{
+    background: linear-gradient(135deg, #111827, #1f2937);
+    border: 1px solid #374151;
+    border-radius: 18px;
+    padding: 24px;
+    min-height: 155px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.30);
+    margin-bottom: 12px;
+}}
+
+.estado-card h3 {{
+    color: #ffffff;
+    font-size: 23px;
+    font-weight: 800;
+    margin-bottom: 18px;
+}}
+
+.estado-card p {{
+    color: #d1d5db;
+    font-size: 16px;
+    line-height: 1.5;
+}}
+
+.chips-container {{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}}
+
+.chip {{
+    display: inline-block;
+    background-color: #0ea5e9;
+    color: white;
+    padding: 8px 15px;
+    border-radius: 999px;
+    font-size: 17px;
+    font-weight: 800;
+    letter-spacing: 0.3px;
+}}
+
+.chip-absorbente {{
+    background-color: #22c55e;
+}}
+
+.chip-transitorio {{
+    background-color: #f59e0b;
+}}
+
+.chip-empty {{
+    background-color: #6b7280;
+}}
+
+.small-note {{
+    margin-top: 14px;
+    color: #9ca3af;
+    font-size: 14px;
+}}
 </style>
+
 <div class="watermark">{WATERMARK_TEXT}</div>
 """
+
 st.markdown(watermark_html, unsafe_allow_html=True)
 
 
@@ -247,7 +310,7 @@ def absorption_probabilities(P: np.ndarray, state_names):
     absorbing, transient = classify_absorbing_states(P)
 
     if len(absorbing) == 0:
-        return None, None, absorbing, transient, "La cadena no tiene estados absorbentes."
+        return None, None, None, absorbing, transient, "La cadena no tiene estados absorbentes."
 
     if len(transient) == 0:
         B = np.eye(len(absorbing))
@@ -259,8 +322,9 @@ def absorption_probabilities(P: np.ndarray, state_names):
         )
 
         N_df = None
+        t_df = None
 
-        return B_df, N_df, absorbing, transient, None
+        return B_df, N_df, t_df, absorbing, transient, None
 
     Q = P[np.ix_(transient, transient)]
     R = P[np.ix_(transient, absorbing)]
@@ -270,6 +334,7 @@ def absorption_probabilities(P: np.ndarray, state_names):
     try:
         N = np.linalg.inv(I - Q)
         B = N @ R
+        t = N @ np.ones(len(transient))
 
         B_df = pd.DataFrame(
             np.round(B, 6),
@@ -283,10 +348,16 @@ def absorption_probabilities(P: np.ndarray, state_names):
             columns=[state_names[i] for i in transient]
         )
 
-        return B_df, N_df, absorbing, transient, None
+        t_df = pd.DataFrame({
+            "Estado transitorio": [state_names[i] for i in transient],
+            "Tiempo promedio antes de absorción": [round(float(x), 6) for x in t]
+        })
+
+        return B_df, N_df, t_df, absorbing, transient, None
 
     except np.linalg.LinAlgError:
         return (
+            None,
             None,
             None,
             absorbing,
@@ -561,6 +632,33 @@ def build_absorption_figure(absorption_df):
     return fig
 
 
+def build_absorption_time_figure(absorption_time_df):
+    if absorption_time_df is None or absorption_time_df.empty:
+        return None
+
+    fig = go.Figure(
+        go.Bar(
+            x=absorption_time_df["Estado transitorio"],
+            y=absorption_time_df["Tiempo promedio antes de absorción"],
+            text=[
+                f"{v:.4f}"
+                for v in absorption_time_df["Tiempo promedio antes de absorción"]
+            ],
+            textposition="outside"
+        )
+    )
+
+    fig.update_layout(
+        title="Tiempo promedio antes de ser absorbido",
+        xaxis_title="Estado inicial transitorio",
+        yaxis_title="Número esperado de pasos",
+        height=430,
+        margin=dict(b=60)
+    )
+
+    return fig
+
+
 def build_first_passage_heatmap(first_passage_df):
     if first_passage_df is None or first_passage_df.empty:
         return None
@@ -630,6 +728,37 @@ def build_v0(dim, state_names, init_mode, init_state, custom_values):
         v0 = v0 / total
 
     return v0
+
+
+def crear_chips(estados, tipo="normal"):
+    if not estados:
+        return "<span class='chip chip-empty'>Ninguno</span>"
+
+    if tipo == "absorbente":
+        css_class = "chip chip-absorbente"
+    elif tipo == "transitorio":
+        css_class = "chip chip-transitorio"
+    else:
+        css_class = "chip"
+
+    return "".join([f"<span class='{css_class}'>{estado}</span>" for estado in estados])
+
+
+def mostrar_tarjeta_estados(titulo, estados, tipo, nota):
+    chips_html = crear_chips(estados, tipo=tipo)
+
+    st.markdown(
+        f"""
+        <div class="estado-card">
+            <h3>{titulo}</h3>
+            <div class="chips-container">
+                {chips_html}
+            </div>
+            <div class="small-note">{nota}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
@@ -821,7 +950,7 @@ with tab_matrix_graph:
                     columns=state_names
                 )
 
-                absorption_df, N_df, absorbing_states, transient_states, absorption_error = (
+                absorption_df, N_df, absorption_time_df, absorbing_states, transient_states, absorption_error = (
                     absorption_probabilities(P, state_names)
                 )
 
@@ -840,6 +969,7 @@ with tab_matrix_graph:
                     "first_passage_df": first_passage_df,
                     "absorption_df": absorption_df,
                     "N_df": N_df,
+                    "absorption_time_df": absorption_time_df,
                     "absorbing_states": absorbing_states,
                     "transient_states": transient_states,
                     "absorption_error": absorption_error
@@ -874,6 +1004,7 @@ if solution_is_valid:
     first_passage_df = solution.get("first_passage_df")
     absorption_df = solution.get("absorption_df")
     N_df = solution.get("N_df")
+    absorption_time_df = solution.get("absorption_time_df")
     absorbing_states = solution.get("absorbing_states", [])
     transient_states = solution.get("transient_states", [])
     absorption_error = solution.get("absorption_error")
@@ -891,6 +1022,7 @@ else:
     first_passage_df = None
     absorption_df = None
     N_df = None
+    absorption_time_df = None
     absorbing_states = []
     transient_states = []
     absorption_error = None
@@ -1092,7 +1224,7 @@ with tab_first_passage:
         st.latex(r"\mu_{ij} = 1 + \sum_{k \neq j} p_{ik}\mu_{kj}, \qquad i \neq j")
 
         st.info(
-            "El tiempo medio de primera pasada m_ij representa el número esperado de pasos "
+            "El tiempo medio de primera pasada μ_ij representa el número esperado de pasos "
             "para llegar por primera vez al estado j, comenzando desde el estado i."
         )
 
@@ -1128,24 +1260,31 @@ with tab_absorption:
     else:
         st.markdown(
             """
-<div class="info-box">
-<h4>Interpretación</h4>
-Representa la probabilidad de que la cadena termine absorbida en un estado absorbente,
-partiendo desde un estado transitorio.
-</div>
-""",
+            <div class="info-box">
+                <h4>Interpretación</h4>
+                <p>
+                Esta sección analiza cadenas de Markov absorbentes. Una cadena absorbente
+                tiene al menos un estado absorbente, es decir, un estado que una vez alcanzado
+                no se abandona. Desde los estados transitorios se calculan las probabilidades
+                de terminar absorbido en cada estado absorbente.
+                </p>
+            </div>
+            """,
             unsafe_allow_html=True
         )
+
+        st.markdown("### Fórmulas utilizadas")
+
         st.latex(r"N=(I-Q)^{-1}")
         st.latex(r"B=NR")
-        st.latex(r"b_{ij}=p_{ij}+\sum_{k\ \text{transitorio}}p_{ik}b_{kj}")
-        
-        
+        st.latex(r"\mathbf{t}=N\mathbf{1}")
+        st.latex(r"b_{ij}=R_{ij}+\sum_{k \in T}Q_{ik}b_{kj}")
+
         st.info(
-            "En esta expresión, b_ij es la probabilidad de absorción en el estado absorbente j "
-            "cuando la cadena inicia en el estado transitorio i. El término p_ij representa una "
-            "absorción directa, mientras que la suma considera los caminos que pasan primero por "
-            "otros estados transitorios."
+            "Aquí Q contiene las transiciones entre estados transitorios, R contiene las "
+            "transiciones desde estados transitorios hacia estados absorbentes, N es la matriz "
+            "fundamental, B contiene las probabilidades de absorción y t contiene el tiempo "
+            "promedio antes de ser absorbido."
         )
 
         st.markdown("---")
@@ -1157,15 +1296,20 @@ partiendo desde un estado transitorio.
             col1, col2 = st.columns([1, 1])
 
             with col1:
-                st.markdown("### Estados absorbentes detectados")
-                st.write(absorbing_names)
+                mostrar_tarjeta_estados(
+                    titulo="Estados absorbentes detectados",
+                    estados=absorbing_names,
+                    tipo="absorbente",
+                    nota="Un estado absorbente no se abandona una vez la cadena entra en él."
+                )
 
             with col2:
-                st.markdown("### Estados transitorios")
-                if len(transient_names) > 0:
-                    st.write(transient_names)
-                else:
-                    st.write("No hay estados transitorios.")
+                mostrar_tarjeta_estados(
+                    titulo="Estados transitorios detectados",
+                    estados=transient_names,
+                    tipo="transitorio",
+                    nota="Un estado transitorio puede moverse hacia otros estados antes de la absorción."
+                )
 
             if N_df is not None:
                 st.markdown("---")
@@ -1175,6 +1319,21 @@ partiendo desde un estado transitorio.
                     N_df,
                     use_container_width=True
                 )
+
+            if absorption_time_df is not None:
+                st.markdown("---")
+                st.markdown("### Tiempo promedio antes de ser absorbido")
+
+                st.dataframe(
+                    absorption_time_df,
+                    use_container_width=True,
+                    hide_index=True
+                )
+
+                fig_abs_time = build_absorption_time_figure(absorption_time_df)
+
+                if fig_abs_time is not None:
+                    st.plotly_chart(fig_abs_time, use_container_width=True)
 
             if absorption_df is not None:
                 st.markdown("---")
