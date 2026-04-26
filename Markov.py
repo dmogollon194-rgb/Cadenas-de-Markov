@@ -818,12 +818,12 @@ current_signature = (
 # ── Pestañas ──────────────────────────────────────────────────────────────────
 tab_matrix_graph, tab_nsteps, tab_stationary, tab_recurrence, tab_first_passage, tab_absorption = st.tabs(
     [
-        "1. Matriz y grafo",
-        "2. n pasos y evolución",
-        "3. Estado estable",
-        "4. Tiempos de recurrencia",
-        "5. Primera pasada",
-        "6. Probabilidad de absorción"
+        "Matriz y grafo",
+        "N-pasos y evolución",
+        "Estado estable",
+        "Tiempos de recurrencia",
+        "Primera pasada",
+        "Probabilidad de absorción"
     ]
 )
 
