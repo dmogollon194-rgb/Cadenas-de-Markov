@@ -785,7 +785,7 @@ input_mode = st.sidebar.radio(
 )
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("**Nombres de estados**")
+st.sidebar.markdown("### Nombres de estados")
 
 state_names = []
 
@@ -802,6 +802,60 @@ for i in range(dim):
 initialize_matrix_cells(dim, input_mode)
 
 
+# ── Estado inicial en sidebar ─────────────────────────────────────────────────
+st.sidebar.markdown("---")
+st.sidebar.markdown("### Estado inicial")
+
+init_mode_sidebar = st.sidebar.radio(
+    "Tipo de distribución inicial",
+    ["Un estado puro", "Distribución personalizada"],
+    key="sidebar_init_mode"
+)
+
+init_state_sidebar = None
+custom_values_sidebar = []
+
+if init_mode_sidebar == "Un estado puro":
+    init_state_sidebar = st.sidebar.selectbox(
+        "Estado inicial",
+        state_names,
+        key=f"sidebar_init_state_{dim}"
+    )
+
+else:
+    st.sidebar.markdown("**Distribución inicial**")
+
+    for i, state in enumerate(state_names):
+        value = st.sidebar.number_input(
+            f"P(X₀ = {state})",
+            min_value=0.0,
+            max_value=1.0,
+            value=round(1 / dim, 4),
+            step=0.01,
+            key=f"sidebar_v0_{dim}_{i}"
+        )
+
+        custom_values_sidebar.append(value)
+
+    total_v0_sidebar = sum(custom_values_sidebar)
+
+    if abs(total_v0_sidebar - 1.0) > 1e-6:
+        st.sidebar.warning(
+            f"La suma actual es {total_v0_sidebar:.4f}. "
+            "El programa normalizará automáticamente la distribución."
+        )
+
+
+# ── Botón de resolución en sidebar ────────────────────────────────────────────
+st.sidebar.markdown("---")
+
+submitted = st.sidebar.button(
+    "Resolver cadena de Markov",
+    use_container_width=True,
+    type="primary"
+)
+
+
 # ── Encabezado principal ──────────────────────────────────────────────────────
 st.title("Análisis de Cadenas de Markov")
 
@@ -811,7 +865,10 @@ current_signature = (
     dim,
     input_mode,
     tuple(state_names),
-    int(n_steps_sidebar)
+    int(n_steps_sidebar),
+    init_mode_sidebar,
+    init_state_sidebar,
+    tuple(round(float(x), 8) for x in custom_values_sidebar)
 )
 
 
@@ -832,154 +889,115 @@ tab_matrix_graph, tab_nsteps, tab_stationary, tab_recurrence, tab_first_passage,
 with tab_matrix_graph:
     st.markdown("## Ingreso de matriz y grafo de transición")
 
-    with st.form("resolver_cadena_form", clear_on_submit=False):
-        st.markdown("### Matriz de transición")
+    st.markdown("### Matriz de transición")
 
-        if input_mode == "Decimales":
-            st.caption("Ingresa decimales, por ejemplo: 0.5, 0.25, 1.0")
-        else:
-            st.caption("Ingresa fracciones o decimales, por ejemplo: 1/2, 3/4, 0.25")
+    if input_mode == "Decimales":
+        st.caption("Ingresa decimales, por ejemplo: 0.5, 0.25, 1.0")
+    else:
+        st.caption("Ingresa fracciones o decimales, por ejemplo: 1/2, 3/4, 0.25")
 
-        header_cols = st.columns(dim + 1)
-        header_cols[0].markdown("")
+    header_cols = st.columns(dim + 1)
+    header_cols[0].markdown("")
 
-        for j, name in enumerate(state_names):
-            header_cols[j + 1].markdown(
-                f"<div class='matrix-label'>{name}</div>",
-                unsafe_allow_html=True
-            )
-
-        for i in range(dim):
-            row_cols = st.columns(dim + 1)
-
-            row_cols[0].markdown(
-                f"<div class='row-label'>{state_names[i]}</div>",
-                unsafe_allow_html=True
-            )
-
-            for j in range(dim):
-                row_cols[j + 1].text_input(
-                    label=f"{state_names[i]}-{state_names[j]}",
-                    key=f"cell_{i}_{j}",
-                    label_visibility="collapsed"
-                )
-
-        st.markdown("---")
-        st.markdown("### Estado inicial")
-
-        init_mode_form = st.radio(
-            "Tipo de distribución inicial",
-            ["Un estado puro", "Distribución personalizada"],
-            horizontal=True,
-            key="form_init_mode"
+    for j, name in enumerate(state_names):
+        header_cols[j + 1].markdown(
+            f"<div class='matrix-label'>{name}</div>",
+            unsafe_allow_html=True
         )
 
-        init_state_form = None
-        custom_values_form = []
+    for i in range(dim):
+        row_cols = st.columns(dim + 1)
 
-        if init_mode_form == "Un estado puro":
-            init_state_form = st.selectbox(
-                "Estado inicial",
-                state_names,
-                key=f"form_init_state_{dim}"
-            )
-
-        else:
-            st.markdown("**Distribución inicial**")
-
-            cols_v0 = st.columns(dim)
-
-            for i, c in enumerate(cols_v0):
-                value = c.number_input(
-                    state_names[i],
-                    min_value=0.0,
-                    max_value=1.0,
-                    value=round(1 / dim, 4),
-                    step=0.01,
-                    key=f"v0_{dim}_{i}"
-                )
-
-                custom_values_form.append(value)
-
-        st.markdown("---")
-
-        submitted = st.form_submit_button(
-            "Resolver cadena de Markov",
-            use_container_width=True,
-            type="primary"
+        row_cols[0].markdown(
+            f"<div class='row-label'>{state_names[i]}</div>",
+            unsafe_allow_html=True
         )
 
-    if submitted:
-        try:
-            matrix_text = collect_matrix_text(dim)
-            P = parse_matrix_values(matrix_text, input_mode)
+        for j in range(dim):
+            row_cols[j + 1].text_input(
+                label=f"{state_names[i]}-{state_names[j]}",
+                key=f"cell_{i}_{j}",
+                label_visibility="collapsed"
+            )
 
-            valid, msg = is_valid_stochastic(P)
+    st.info(
+        "El estado inicial y el botón para resolver están en la barra lateral. "
+        "Puedes cambiar la configuración general sin depender de esta pestaña."
+    )
 
-            if not valid:
-                st.session_state.pop("solution_data", None)
-                st.error(f"Matriz inválida: {msg}")
 
-            else:
-                v0 = build_v0(
-                    dim=dim,
-                    state_names=state_names,
-                    init_mode=init_mode_form,
-                    init_state=init_state_form,
-                    custom_values=custom_values_form
-                )
+# ── Resolver modelo desde botón de sidebar ────────────────────────────────────
+if submitted:
+    try:
+        matrix_text = collect_matrix_text(dim)
+        P = parse_matrix_values(matrix_text, input_mode)
 
-                n_steps = int(n_steps_sidebar)
+        valid, msg = is_valid_stochastic(P)
 
-                evol = build_evolution(P, v0, n_steps)
-                Pn = mat_power(P, n_steps)
-                dist_n = evol[n_steps]
-
-                pi, rank = steady_state(P)
-
-                recurrence_df = None
-
-                if pi is not None:
-                    recurrence_df = mean_recurrence_times(pi, state_names)
-
-                M_first = first_passage_times(P)
-
-                first_passage_df = pd.DataFrame(
-                    np.round(M_first, 6),
-                    index=state_names,
-                    columns=state_names
-                )
-
-                absorption_df, N_df, absorption_time_df, absorbing_states, transient_states, absorption_error = (
-                    absorption_probabilities(P, state_names)
-                )
-
-                st.session_state["solution_data"] = {
-                    "signature": current_signature,
-                    "P": P,
-                    "v0": v0,
-                    "n_steps": n_steps,
-                    "evol": evol,
-                    "Pn": Pn,
-                    "dist_n": dist_n,
-                    "pi": pi,
-                    "rank": rank,
-                    "state_names": state_names.copy(),
-                    "recurrence_df": recurrence_df,
-                    "first_passage_df": first_passage_df,
-                    "absorption_df": absorption_df,
-                    "N_df": N_df,
-                    "absorption_time_df": absorption_time_df,
-                    "absorbing_states": absorbing_states,
-                    "transient_states": transient_states,
-                    "absorption_error": absorption_error
-                }
-
-                st.success("Modelo resuelto correctamente.")
-
-        except Exception as e:
+        if not valid:
             st.session_state.pop("solution_data", None)
-            st.error(f"No se pudo resolver: {e}")
+            st.error(f"Matriz inválida: {msg}")
+
+        else:
+            v0 = build_v0(
+                dim=dim,
+                state_names=state_names,
+                init_mode=init_mode_sidebar,
+                init_state=init_state_sidebar,
+                custom_values=custom_values_sidebar
+            )
+
+            n_steps = int(n_steps_sidebar)
+
+            evol = build_evolution(P, v0, n_steps)
+            Pn = mat_power(P, n_steps)
+            dist_n = evol[n_steps]
+
+            pi, rank = steady_state(P)
+
+            recurrence_df = None
+
+            if pi is not None:
+                recurrence_df = mean_recurrence_times(pi, state_names)
+
+            M_first = first_passage_times(P)
+
+            first_passage_df = pd.DataFrame(
+                np.round(M_first, 6),
+                index=state_names,
+                columns=state_names
+            )
+
+            absorption_df, N_df, absorption_time_df, absorbing_states, transient_states, absorption_error = (
+                absorption_probabilities(P, state_names)
+            )
+
+            st.session_state["solution_data"] = {
+                "signature": current_signature,
+                "P": P,
+                "v0": v0,
+                "n_steps": n_steps,
+                "evol": evol,
+                "Pn": Pn,
+                "dist_n": dist_n,
+                "pi": pi,
+                "rank": rank,
+                "state_names": state_names.copy(),
+                "recurrence_df": recurrence_df,
+                "first_passage_df": first_passage_df,
+                "absorption_df": absorption_df,
+                "N_df": N_df,
+                "absorption_time_df": absorption_time_df,
+                "absorbing_states": absorbing_states,
+                "transient_states": transient_states,
+                "absorption_error": absorption_error
+            }
+
+            st.success("Modelo resuelto correctamente.")
+
+    except Exception as e:
+        st.session_state.pop("solution_data", None)
+        st.error(f"No se pudo resolver: {e}")
 
 
 # ── Recuperar solución ────────────────────────────────────────────────────────
@@ -1030,9 +1048,9 @@ else:
 
 def require_solution_message():
     if solution is None:
-        st.info("Primero ingresa la matriz y pulsa **Resolver cadena de Markov** en la pestaña 1.")
+        st.info("Primero ingresa la matriz y pulsa **Resolver cadena de Markov** en la barra lateral.")
     else:
-        st.warning("Cambiaste la configuración. Vuelve a pulsar **Resolver cadena de Markov** en la pestaña 1.")
+        st.warning("Cambiaste la configuración. Vuelve a pulsar **Resolver cadena de Markov** en la barra lateral.")
 
 
 # ── Mostrar grafo en la misma pestaña de matriz ───────────────────────────────
@@ -1252,7 +1270,7 @@ with tab_first_passage:
 
 # ── TAB 6: Probabilidad de absorción ──────────────────────────────────────────
 with tab_absorption:
-    st.markdown("## Prob. de absorción")
+    st.markdown("## Probabilidad de absorción")
 
     if not solution_is_valid:
         require_solution_message()
