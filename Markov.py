@@ -1136,9 +1136,11 @@ partiendo desde un estado transitorio.
 """,
             unsafe_allow_html=True
         )
-
+        st.latex(r"N=(I-Q)⋀{-1})
+        st.latex(r"B=NR)
         st.latex(r"b_{ij}=p_{ij}+\sum_{k\ \text{transitorio}}p_{ik}b_{kj}")
-
+        
+        
         st.info(
             "En esta expresión, b_ij es la probabilidad de absorción en el estado absorbente j "
             "cuando la cadena inicia en el estado transitorio i. El término p_ij representa una "
