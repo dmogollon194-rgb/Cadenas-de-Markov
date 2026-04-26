@@ -1202,7 +1202,7 @@ with tab_recurrence:
         require_solution_message()
 
     else:
-        st.latex(r"m_{ii} = \frac{1}{\pi_i}")
+        st.latex(r"\mu_{ii} = \frac{1}{\pi_i}")
 
         st.info(
             "El tiempo medio de recurrencia indica el número esperado de pasos para "
