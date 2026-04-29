@@ -433,7 +433,7 @@ def build_graph_figure(P: np.ndarray, state_names, threshold=1e-12):
     return fig
 
 
-def build_evolution_figure(evol, state_names, n_steps):
+def build_evolution_figure(evol, state_names, n_steps, mixing_time=None):
     fig_ev = go.Figure()
     steps = np.arange(n_steps + 1)
     for i, name in enumerate(state_names):
@@ -441,6 +441,12 @@ def build_evolution_figure(evol, state_names, n_steps):
             x=steps, y=evol[:, i], mode="lines+markers", name=name,
             line=dict(color=COLORS[i % len(COLORS)], width=2), marker=dict(size=5)
         ))
+    if mixing_time is not None and mixing_time <= n_steps:
+        fig_ev.add_vline(
+            x=mixing_time, line_dash="dot", line_color="#5DCAA5",
+            annotation_text=f"Mixing time ≈ {mixing_time}",
+            annotation_position="top right"
+        )
     fig_ev.update_layout(
         title=f"Evolución de la distribución en {n_steps} pasos",
         xaxis_title="Paso n", yaxis_title="Probabilidad",
@@ -500,15 +506,6 @@ def build_spectral_figure(spectral_data, state_names):
         annotation_text="λ = 1", annotation_position="right"
     )
 
-    # Línea de λ₂ si existe
-    if spectral_data["lambda2_mod"] is not None:
-        fig.add_hline(
-            y=spectral_data["lambda2_mod"],
-            line_dash="dot", line_color="#EF9F27",
-            annotation_text=f"|λ₂| = {spectral_data['lambda2_mod']:.4f}",
-            annotation_position="left"
-        )
-
     fig.update_layout(
         title="Espectro de la matriz de transición — módulos |λᵢ|",
         xaxis_title="Eigenvalue",
@@ -550,16 +547,6 @@ def build_convergence_figure(evol, pi, state_names, n_steps, spectral_data):
             name=f"Decaimiento teórico |λ₂|ⁿ = {lam2:.4f}ⁿ",
             line=dict(color="#EF9F27", width=2, dash="dash")
         ))
-
-    # Línea de mixing time
-    if spectral_data and spectral_data["mixing_time"] is not None:
-        mt = spectral_data["mixing_time"]
-        if mt <= n_steps:
-            fig.add_vline(
-                x=mt, line_dash="dot", line_color="#5DCAA5",
-                annotation_text=f"Mixing time ≈ {mt}",
-                annotation_position="top right"
-            )
 
     fig.update_layout(
         title="Convergencia hacia el estado estable — Distancia Total de Variación (TVD)",
@@ -954,12 +941,12 @@ with tab_stationary:
             st.markdown("---")
             st.markdown(f"### Evolución de la distribución en {n_steps} pasos")
             st.caption("La misma evolución que en la pestaña N-pasos, útil para ver cómo converge hacia π.")
-            fig_ev_stable = build_evolution_figure(evol, state_names, n_steps)
+            fig_ev_stable = build_evolution_figure(evol, state_names, n_steps, mixing_time=spectral["mixing_time"] if spectral else None)
             st.plotly_chart(fig_ev_stable, use_container_width=True, key="ev_stationary")
 
             # ── Análisis espectral ────────────────────────────────────────
             st.markdown("---")
-            st.markdown("## Análisis de convergencia")
+            st.markdown("## Análisis espectral y convergencia")
 
             if spectral is not None:
                 lam2 = spectral["lambda2_mod"]
