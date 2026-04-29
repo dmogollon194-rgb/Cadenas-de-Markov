@@ -260,8 +260,8 @@ def spectral_analysis(P: np.ndarray):
 
         if lambda2_mod is not None and lambda2_mod < 1.0 - 1e-10:
             spectral_gap = 1.0 - lambda2_mod
-            # Mixing time: pasos para que el error decaiga a ε=0.01
-            epsilon = 0.01
+            # Mixing time: pasos para que el error decaiga a ε=0.001
+            epsilon = 0.001
             mixing_time = int(np.ceil(np.log(1 / epsilon) / np.log(1 / lambda2_mod)))
         elif lambda2_mod is not None and lambda2_mod >= 1.0 - 1e-10:
             spectral_gap = 0.0
