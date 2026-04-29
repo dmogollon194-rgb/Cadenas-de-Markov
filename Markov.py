@@ -948,14 +948,14 @@ with tab_stationary:
                 st.dataframe(pi_df, use_container_width=True, hide_index=True, height=420)
             with col2:
                 fig_pi = build_stationary_figure(pi, state_names)
-                st.plotly_chart(fig_pi, use_container_width=True)
+                st.plotly_chart(fig_pi, use_container_width=True, key="pi_stationary")
 
             # ── Evolución de la distribución (igual a N-pasos) ─────────────
             st.markdown("---")
             st.markdown(f"### Evolución de la distribución en {n_steps} pasos")
             st.caption("La misma evolución que en la pestaña N-pasos, útil para ver cómo converge hacia π.")
             fig_ev_stable = build_evolution_figure(evol, state_names, n_steps)
-            st.plotly_chart(fig_ev_stable, use_container_width=True)
+            st.plotly_chart(fig_ev_stable, use_container_width=True, key="ev_stationary")
 
             # ── Análisis espectral ────────────────────────────────────────
             st.markdown("---")
@@ -1041,7 +1041,7 @@ with tab_stationary:
                     )
                 with col_eig2:
                     fig_spec = build_spectral_figure(spectral, state_names)
-                    st.plotly_chart(fig_spec, use_container_width=True)
+                    st.plotly_chart(fig_spec, use_container_width=True, key="spectral_chart")
 
                 # Gráfica de convergencia TVD
                 st.markdown("---")
@@ -1051,7 +1051,7 @@ with tab_stationary:
                     "La curva punteada es el decaimiento teórico |λ₂|ⁿ."
                 )
                 fig_conv = build_convergence_figure(evol, pi, state_names, n_steps, spectral)
-                st.plotly_chart(fig_conv, use_container_width=True)
+                st.plotly_chart(fig_conv, use_container_width=True, key="convergence_chart")
 
             else:
                 st.warning("No fue posible realizar el análisis espectral.")
