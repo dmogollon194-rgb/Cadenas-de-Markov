@@ -689,7 +689,7 @@ def mostrar_tarjeta_estados(titulo, estados, tipo, nota):
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 st.sidebar.header("Configuración general")
 
-dim = st.sidebar.selectbox("Número de estados", list(range(2, 9)), index=1)
+dim = st.sidebar.selectbox("Número de estados", list(range(2, 19)), index=1)
 
 n_steps_sidebar = st.sidebar.number_input(
     "Pasos n", min_value=1, max_value=2000, value=20, step=1
