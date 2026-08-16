@@ -9,11 +9,11 @@ import plotly.graph_objects as go
 import streamlit as st
 
 
-# ── Configuración de página ───────────────────────────────────────────────────
-st.set_page_config(page_title="Cadenas de Markov", layout="wide")
+# ── Page configuration ───────────────────────────────────────────────────────
+st.set_page_config(page_title="Markov Chains", layout="wide")
 
 
-# ── Constantes ────────────────────────────────────────────────────────────────
+# ── Constants ────────────────────────────────────────────────────────────────
 WATERMARK_TEXT = "by M.Sc. Dilan Mogollón"
 
 COLORS = [
@@ -22,7 +22,7 @@ COLORS = [
 ]
 
 
-# ── Estilos ───────────────────────────────────────────────────────────────────
+# ── Styles ───────────────────────────────────────────────────────────────────
 watermark_html = f"""
 <style>
 .watermark {{
@@ -57,7 +57,7 @@ watermark_html = f"""
     margin-bottom: 18px;
 }}
 
-.estado-card {{
+.state-card {{
     background: linear-gradient(135deg, #111827, #1f2937);
     border: 1px solid #374151;
     border-radius: 18px;
@@ -67,14 +67,14 @@ watermark_html = f"""
     margin-bottom: 12px;
 }}
 
-.estado-card h3 {{
+.state-card h3 {{
     color: #ffffff;
     font-size: 23px;
     font-weight: 800;
     margin-bottom: 18px;
 }}
 
-.estado-card p {{
+.state-card p {{
     color: #d1d5db;
     font-size: 16px;
     line-height: 1.5;
@@ -97,11 +97,11 @@ watermark_html = f"""
     letter-spacing: 0.3px;
 }}
 
-.chip-absorbente {{
+.chip-absorbing {{
     background-color: #22c55e;
 }}
 
-.chip-transitorio {{
+.chip-transient {{
     background-color: #f59e0b;
 }}
 
@@ -151,19 +151,19 @@ watermark_html = f"""
 st.markdown(watermark_html, unsafe_allow_html=True)
 
 
-# ── Funciones auxiliares ──────────────────────────────────────────────────────
+# ── Helper functions ──────────────────────────────────────────────────────────
 def parse_probability(value):
-    """Convierte una probabilidad escrita como decimal o fracción a float.
+    """Convert a probability written as a decimal or fraction to float.
 
-    Ejemplos válidos: 0.5, 0,25, 1/2, 3/4, 1.0.
-    Se pueden mezclar decimales y fracciones dentro de la misma matriz.
+    Valid examples: 0.5, 0,25, 1/2, 3/4, 1.0.
+    Decimals and fractions can be mixed within the same matrix.
     """
     if value is None:
-        raise ValueError("Celda vacía.")
+        raise ValueError("Empty cell.")
 
     text = str(value).strip().replace(",", ".")
     if text == "":
-        raise ValueError("Celda vacía.")
+        raise ValueError("Empty cell.")
 
     try:
         if "/" in text:
@@ -171,7 +171,7 @@ def parse_probability(value):
         return float(text)
     except Exception as exc:
         raise ValueError(
-            f"Valor inválido: {value}. Usa un decimal (0.25) o una fracción (1/4)."
+            f"Invalid value: {value}. Use a decimal (0.25) or a fraction (1/4)."
         ) from exc
 
 
@@ -186,19 +186,19 @@ def parse_matrix_values(matrix_text):
 
 def is_valid_stochastic(P: np.ndarray):
     if P.ndim != 2:
-        return False, "La matriz no es bidimensional."
+        return False, "The matrix is not two-dimensional."
     rows, cols = P.shape
     if rows != cols:
-        return False, "La matriz debe ser cuadrada."
+        return False, "The matrix must be square."
     if np.any(np.isnan(P)):
-        return False, "Hay celdas vacías o inválidas."
+        return False, "There are empty or invalid cells."
     if np.any(P < 0):
-        return False, "Hay valores negativos."
+        return False, "There are negative values."
     row_sums = P.sum(axis=1)
     if not np.allclose(row_sums, 1.0, atol=1e-6):
         bad = np.where(~np.isclose(row_sums, 1.0, atol=1e-6))[0]
-        filas = [int(i) + 1 for i in bad]
-        return False, f"Las filas {filas} no suman 1."
+        invalid_rows = [int(i) + 1 for i in bad]
+        return False, f"Rows {invalid_rows} do not sum to 1."
     return True, ""
 
 
@@ -234,20 +234,20 @@ def steady_state(P: np.ndarray):
 
 def spectral_analysis(P: np.ndarray):
     """
-    Calcula eigenvalues, mixing time estimado y tasa de convergencia espectral.
-    Retorna dict con eigenvalues ordenados por módulo descendente,
-    lambda2 (segundo eigenvalue), mixing_time estimado y spectral_gap.
+    Compute eigenvalues, estimated mixing time, and spectral convergence rate.
+    Return a dictionary with eigenvalues sorted by descending modulus,
+    lambda2 (second eigenvalue), estimated mixing_time, and spectral_gap.
     """
     try:
         eigenvalues = np.linalg.eigvals(P)
-        # Ordenar por módulo descendente
+        # Sort by descending modulus
         idx = np.argsort(-np.abs(eigenvalues))
         eigenvalues = eigenvalues[idx]
 
-        lambda1 = eigenvalues[0]  # Debe ser ≈ 1
+        lambda1 = eigenvalues[0]  # Should be ≈ 1
         moduli = np.abs(eigenvalues)
 
-        # λ₂: segundo mayor módulo (ignorando λ₁ = 1)
+        # λ₂: second-largest modulus (ignoring λ₁ = 1)
         lambda2_mod = moduli[1] if len(moduli) > 1 else None
 
         spectral_gap = None
@@ -255,12 +255,12 @@ def spectral_analysis(P: np.ndarray):
 
         if lambda2_mod is not None and lambda2_mod < 1.0 - 1e-10:
             spectral_gap = 1.0 - lambda2_mod
-            # Mixing time: pasos para que el error decaiga a ε=0.01
+            # Mixing time: steps required for the error to decay to ε=0.01
             epsilon = 0.01
             mixing_time = int(np.ceil(np.log(1 / epsilon) / np.log(1 / lambda2_mod)))
         elif lambda2_mod is not None and lambda2_mod >= 1.0 - 1e-10:
             spectral_gap = 0.0
-            mixing_time = None  # No converge (periódica o reducible)
+            mixing_time = None  # Does not converge (periodic or reducible)
 
         return {
             "eigenvalues": eigenvalues,
@@ -293,9 +293,9 @@ def mean_recurrence_times(pi: np.ndarray, state_names):
         else:
             value = np.inf
         rows.append({
-            "Estado": name,
+            "State": name,
             "π_i": round(float(pi[i]), 6),
-            "Tiempo medio de recurrencia": round(float(value), 6)
+            "Mean recurrence time": round(float(value), 6)
             if np.isfinite(value)
             else "∞"
         })
@@ -328,13 +328,13 @@ def first_passage_times(P: np.ndarray):
 def absorption_probabilities(P: np.ndarray, state_names):
     absorbing, transient = classify_absorbing_states(P)
     if len(absorbing) == 0:
-        return None, None, None, absorbing, transient, "La cadena no tiene estados absorbentes."
+        return None, None, None, absorbing, transient, "The chain has no absorbing states."
     if len(transient) == 0:
         B = np.eye(len(absorbing))
         B_df = pd.DataFrame(
             np.round(B, 6),
             index=[state_names[i] for i in absorbing],
-            columns=[f"Absorción en {state_names[j]}" for j in absorbing]
+            columns=[f"Absorption in {state_names[j]}" for j in absorbing]
         )
         return B_df, None, None, absorbing, transient, None
     Q = P[np.ix_(transient, transient)]
@@ -347,7 +347,7 @@ def absorption_probabilities(P: np.ndarray, state_names):
         B_df = pd.DataFrame(
             np.round(B, 6),
             index=[state_names[i] for i in transient],
-            columns=[f"Absorción en {state_names[j]}" for j in absorbing]
+            columns=[f"Absorption in {state_names[j]}" for j in absorbing]
         )
         N_df = pd.DataFrame(
             np.round(N, 6),
@@ -355,12 +355,12 @@ def absorption_probabilities(P: np.ndarray, state_names):
             columns=[state_names[i] for i in transient]
         )
         t_df = pd.DataFrame({
-            "Estado transitorio": [state_names[i] for i in transient],
-            "Tiempo promedio antes de absorción": [round(float(x), 6) for x in t]
+            "Transient state": [state_names[i] for i in transient],
+            "Mean time to absorption": [round(float(x), 6) for x in t]
         })
         return B_df, N_df, t_df, absorbing, transient, None
     except np.linalg.LinAlgError:
-        return None, None, None, absorbing, transient, "No fue posible calcular la matriz fundamental N = (I - Q)^(-1)."
+        return None, None, None, absorbing, transient, "The fundamental matrix N = (I - Q)^(-1) could not be computed."
 
 
 def build_evolution(P: np.ndarray, v0: np.ndarray, n_max: int):
@@ -418,10 +418,10 @@ def build_graph_figure(P: np.ndarray, state_names, threshold=1e-12):
     fig.add_trace(go.Scatter(
         x=node_x, y=node_y, mode="markers+text", text=state_names, textposition="middle center",
         marker=dict(size=42, color=[COLORS[i % len(COLORS)] for i in range(n)], line=dict(width=2, color="white")),
-        hovertemplate="Estado: %{text}<extra></extra>", showlegend=False
+        hovertemplate="State: %{text}<extra></extra>", showlegend=False
     ))
     fig.update_layout(
-        title="Grafo asociado a la matriz de transición", height=520,
+        title="Graph associated with the transition matrix", height=520,
         margin=dict(l=10, r=10, t=60, b=10),
         xaxis=dict(visible=False), yaxis=dict(visible=False, scaleanchor="x", scaleratio=1),
     )
@@ -443,8 +443,8 @@ def build_evolution_figure(evol, state_names, n_steps, mixing_time=None):
             annotation_position="top right"
         )
     fig_ev.update_layout(
-        title=f"Evolución de la distribución en {n_steps} pasos",
-        xaxis_title="Paso n", yaxis_title="Probabilidad",
+        title=f"Distribution evolution over {n_steps} steps",
+        xaxis_title="Step n", yaxis_title="Probability",
         yaxis=dict(range=[0, 1.05]), legend=dict(orientation="h", y=-0.22),
         height=520, margin=dict(b=80)
     )
@@ -458,8 +458,8 @@ def build_stationary_figure(pi, state_names):
         marker_color=[COLORS[i % len(COLORS)] for i in range(len(state_names))]
     ))
     fig_pi.update_layout(
-        title="Distribución de estado estable",
-        xaxis_title="Estado", yaxis_title="Probabilidad estacionaria",
+        title="Steady-state distribution",
+        xaxis_title="State", yaxis_title="Probability estacionaria",
         yaxis=dict(range=[0, max(0.05, float(max(pi)) * 1.25)]),
         height=430, margin=dict(b=60)
     )
@@ -467,7 +467,7 @@ def build_stationary_figure(pi, state_names):
 
 
 def build_spectral_figure(spectral_data, state_names):
-    """Gráfica de módulos de todos los eigenvalues."""
+    """Plot the moduli of all eigenvalues."""
     eigenvalues = spectral_data["eigenvalues"]
     moduli = spectral_data["moduli"]
     n = len(eigenvalues)
@@ -484,7 +484,7 @@ def build_spectral_figure(spectral_data, state_names):
 
     fig = go.Figure()
 
-    # Barras de módulo
+    # Modulus bars
     fig.add_trace(go.Bar(
         x=labels, y=moduli,
         text=[f"{m:.4f}" for m in moduli],
@@ -495,14 +495,14 @@ def build_spectral_figure(spectral_data, state_names):
         name="|λᵢ|"
     ))
 
-    # Línea de referencia en 1
+    # Reference line at 1
     fig.add_hline(
         y=1.0, line_dash="dash", line_color="rgba(255,255,255,0.4)",
         annotation_text="λ = 1", annotation_position="right"
     )
 
     fig.update_layout(
-        title="Espectro de la matriz de transición — módulos |λᵢ|",
+        title="Transition-matrix spectrum — moduli |λᵢ|",
         xaxis_title="Eigenvalue",
         yaxis_title="|λᵢ|",
         yaxis=dict(range=[0, 1.15]),
@@ -515,9 +515,9 @@ def build_spectral_figure(spectral_data, state_names):
 
 def build_convergence_figure(evol, pi, state_names, n_steps, spectral_data):
     """
-    Muestra la distancia total de variación (TVD) entre la distribución
-    en el paso n y la distribución estacionaria π.
-    Superpone la curva teórica de decaimiento |λ₂|^n.
+    Show the total variation distance (TVD) between the distribution
+    at step n and the stationary distribution π.
+    Overlay the theoretical decay curve |λ₂|^n.
     """
     steps = np.arange(n_steps + 1)
     tvd = np.array([0.5 * np.sum(np.abs(evol[t] - pi)) for t in steps])
@@ -527,25 +527,25 @@ def build_convergence_figure(evol, pi, state_names, n_steps, spectral_data):
     fig.add_trace(go.Scatter(
         x=steps, y=tvd,
         mode="lines+markers",
-        name="TVD empírica",
+        name="Empirical TVD",
         line=dict(color="#3266ad", width=2),
         marker=dict(size=4)
     ))
 
-    # Curva teórica si tenemos λ₂
+    # Theoretical curve if λ₂ is available
     if spectral_data and spectral_data["lambda2_mod"] is not None:
         lam2 = spectral_data["lambda2_mod"]
         tvd_theory = np.array([lam2**t for t in steps])
         fig.add_trace(go.Scatter(
             x=steps, y=tvd_theory,
             mode="lines",
-            name=f"Decaimiento teórico |λ₂|ⁿ = {lam2:.4f}ⁿ",
+            name=f"Theoretical decay |λ₂|ⁿ = {lam2:.4f}ⁿ",
             line=dict(color="#EF9F27", width=2, dash="dash")
         ))
 
     fig.update_layout(
-        title="Convergencia hacia el estado estable — Distancia Total de Variación (TVD)",
-        xaxis_title="Paso n",
+        title="Convergence to steady state — Total Variation Distance (TVD)",
+        xaxis_title="Step n",
         yaxis_title="TVD = ½ Σ|π(n)ᵢ − πᵢ|",
         legend=dict(orientation="h", y=-0.22),
         height=460,
@@ -556,19 +556,19 @@ def build_convergence_figure(evol, pi, state_names, n_steps, spectral_data):
 
 def build_recurrence_figure(recurrence_df):
     df_plot = recurrence_df.copy()
-    df_plot = df_plot[df_plot["Tiempo medio de recurrencia"].apply(lambda x: isinstance(x, (int, float)))]
+    df_plot = df_plot[df_plot["Mean recurrence time"].apply(lambda x: isinstance(x, (int, float)))]
     if df_plot.empty:
         return None
     fig = go.Figure(go.Bar(
-        x=df_plot["Estado"],
-        y=df_plot["Tiempo medio de recurrencia"],
-        text=[f"{v:.4f}" for v in df_plot["Tiempo medio de recurrencia"]],
+        x=df_plot["State"],
+        y=df_plot["Mean recurrence time"],
+        text=[f"{v:.4f}" for v in df_plot["Mean recurrence time"]],
         textposition="outside",
         marker_color=[COLORS[i % len(COLORS)] for i in range(len(df_plot))]
     ))
     fig.update_layout(
-        title="Tiempos medios de recurrencia por estado",
-        xaxis_title="Estado", yaxis_title="Tiempo medio de recurrencia",
+        title="Mean recurrence times by state",
+        xaxis_title="State", yaxis_title="Mean recurrence time",
         height=430, margin=dict(b=60)
     )
     return fig
@@ -584,8 +584,8 @@ def build_absorption_figure(absorption_df):
             text=[f"{v:.4f}" for v in absorption_df[col]], textposition="outside"
         ))
     fig.update_layout(
-        title="Probabilidades de absorción por estado transitorio",
-        xaxis_title="Estado inicial transitorio", yaxis_title="Prob. de absorción",
+        title="Absorption probabilities by transient state",
+        xaxis_title="Initial transient state", yaxis_title="Absorption probability",
         yaxis=dict(range=[0, 1.05]), barmode="group",
         height=460, margin=dict(b=70)
     )
@@ -596,14 +596,14 @@ def build_absorption_time_figure(absorption_time_df):
     if absorption_time_df is None or absorption_time_df.empty:
         return None
     fig = go.Figure(go.Bar(
-        x=absorption_time_df["Estado transitorio"],
-        y=absorption_time_df["Tiempo promedio antes de absorción"],
-        text=[f"{v:.4f}" for v in absorption_time_df["Tiempo promedio antes de absorción"]],
+        x=absorption_time_df["Transient state"],
+        y=absorption_time_df["Mean time to absorption"],
+        text=[f"{v:.4f}" for v in absorption_time_df["Mean time to absorption"]],
         textposition="outside"
     ))
     fig.update_layout(
-        title="Tiempo promedio antes de ser absorbido",
-        xaxis_title="Estado inicial transitorio", yaxis_title="Número esperado de pasos",
+        title="Mean time to absorption",
+        xaxis_title="Initial transient state", yaxis_title="Expected number of steps",
         height=430, margin=dict(b=60)
     )
     return fig
@@ -616,18 +616,18 @@ def build_first_passage_heatmap(first_passage_df):
     fig = go.Figure(data=go.Heatmap(
         z=z, x=first_passage_df.columns, y=first_passage_df.index,
         text=np.round(z, 4), texttemplate="%{text}",
-        colorscale="Viridis", colorbar=dict(title="Pasos esperados")
+        colorscale="Viridis", colorbar=dict(title="Expected steps")
     ))
     fig.update_layout(
-        title="Mapa de calor de tiempos medios de primera pasada",
-        xaxis_title="Estado destino", yaxis_title="Estado inicial",
+        title="Heatmap of mean first-passage times",
+        xaxis_title="State destino", yaxis_title="Initial state",
         height=520
     )
     return fig
 
 
 def initialize_matrix_cells(dim):
-    """Inicializa la matriz cuando el ingreso es manual."""
+    """Initialize the matrix when values are entered manually."""
     meta_key = "matrix_input_meta"
     current_meta = ("manual", dim)
 
@@ -644,32 +644,32 @@ def initialize_matrix_cells(dim):
 
 def read_uploaded_matrix(uploaded_file):
     """
-    Lee una matriz desde CSV o Excel SIN encabezados ni índices.
+    Read a matrix from CSV or Excel WITHOUT headers or indices.
 
-    El archivo debe contener únicamente los valores de la matriz:
+    The file must contain only the matrix values:
         p11  p12  ...
         p21  p22  ...
         ...
 
-    Retorna:
-        matrix_values : lista de listas con los valores tal como serán
-                        mostrados en los campos de Streamlit.
-        rows, cols    : dimensiones detectadas.
-        signature     : huella del archivo para no recargarlo en cada rerun.
+    Returns:
+        matrix_values : list of lists containing the values exactly as they will be
+                        displayed in the Streamlit fields.
+        rows, cols    : detected dimensions.
+        signature     : file fingerprint to avoid reloading it on every rerun.
     """
     if uploaded_file is None:
-        raise ValueError("No se ha seleccionado ningún archivo.")
+        raise ValueError("No file has been selected.")
 
     raw_bytes = uploaded_file.getvalue()
     if not raw_bytes:
-        raise ValueError("El archivo está vacío.")
+        raise ValueError("The file is empty.")
 
     file_name = uploaded_file.name.lower()
 
     try:
         if file_name.endswith(".csv"):
-            # sep=None permite detectar coma, punto y coma, tabulador, etc.
-            # dtype=str evita transformar fracciones como 1/2.
+            # sep=None allows automatic detection of commas, semicolons, tabs, etc.
+            # dtype=str prevents fractions such as 1/2 from being transformed.
             df = pd.read_csv(
                 io.BytesIO(raw_bytes),
                 header=None,
@@ -680,8 +680,8 @@ def read_uploaded_matrix(uploaded_file):
             )
 
         elif file_name.endswith((".xlsx", ".xls")):
-            # header=None es esencial: la primera fila del archivo es parte
-            # de la matriz, no un encabezado.
+            # header=None is essential: the first row of the file is part
+            # of the matrix, not a header.
             df = pd.read_excel(
                 io.BytesIO(raw_bytes),
                 header=None,
@@ -689,47 +689,47 @@ def read_uploaded_matrix(uploaded_file):
             )
 
         else:
-            raise ValueError("Formato no compatible. Usa un archivo CSV, XLSX o XLS.")
+            raise ValueError("Unsupported format. Use a CSV, XLSX, or XLS file.")
 
     except ImportError as exc:
         raise ValueError(
-            "No fue posible leer el archivo de Excel. "
-            "Para archivos .xlsx instala 'openpyxl'; para .xls puede requerirse 'xlrd'."
+            "The Excel file could not be read. "
+            "For .xlsx files, install 'openpyxl'; .xls files may require 'xlrd'."
         ) from exc
     except Exception as exc:
-        raise ValueError(f"No fue posible leer el archivo: {exc}") from exc
+        raise ValueError(f"The file could not be read: {exc}") from exc
 
     if df.empty:
-        raise ValueError("El archivo no contiene datos.")
+        raise ValueError("The file contains no data.")
 
-    # Eliminar únicamente filas/columnas completamente vacías que puedan
-    # quedar al final del archivo. No se permiten huecos dentro de la matriz.
+    # Remove only completely empty rows/columns that may remain
+    # at the end of the file. Gaps inside the matrix are not allowed.
     df = df.replace(r"^\s*$", np.nan, regex=True)
     df = df.dropna(axis=0, how="all").dropna(axis=1, how="all")
 
     if df.empty:
-        raise ValueError("El archivo no contiene valores de matriz.")
+        raise ValueError("The file contains no matrix values.")
 
     if df.isna().any().any():
         empty_positions = np.argwhere(df.isna().to_numpy())
         first_i, first_j = empty_positions[0]
         raise ValueError(
-            f"La matriz contiene una celda vacía en la fila {first_i + 1}, "
-            f"columna {first_j + 1}."
+            f"The matrix contains an empty cell in row {first_i + 1}, "
+            f"column {first_j + 1}."
         )
 
     rows, cols = df.shape
 
     if rows != cols:
         raise ValueError(
-            f"La matriz cargada debe ser cuadrada. "
-            f"Se detectó una matriz de {rows} x {cols}."
+            f"The uploaded matrix must be square. "
+            f"A {rows} x {cols} matrix was detected."
         )
 
     if rows < 2 or rows > 18:
         raise ValueError(
-            f"La matriz tiene {rows} estados. "
-            "La aplicación admite entre 2 y 18 estados."
+            f"The matrix has {rows} states. "
+            "The application supports between 2 and 18 states."
         )
 
     matrix_values = [
@@ -742,7 +742,7 @@ def read_uploaded_matrix(uploaded_file):
 
 
 def load_uploaded_matrix_into_session(matrix_values, dim, signature):
-    """Carga el archivo en los campos editables solo cuando corresponde."""
+    """Load the file into editable fields only when appropriate."""
     meta_key = "matrix_input_meta"
     current_meta = ("upload", signature, dim)
 
@@ -763,51 +763,51 @@ def collect_matrix_text(dim):
 
 
 def build_v0(dim, state_names, init_mode, init_state, custom_values):
-    if init_mode == "Un estado puro":
+    if init_mode == "Single state":
         v0 = np.zeros(dim)
         v0[state_names.index(init_state)] = 1.0
         return v0
     v0 = np.array(custom_values, dtype=float)
     total = v0.sum()
     if total <= 1e-12:
-        raise ValueError("La distribución inicial no puede sumar 0.")
+        raise ValueError("The initial distribution cannot sum to 0.")
     if abs(total - 1.0) > 1e-6:
         v0 = v0 / total
     return v0
 
 
-def crear_chips(estados, tipo="normal"):
-    if not estados:
-        return "<span class='chip chip-empty'>Ninguno</span>"
-    if tipo == "absorbente":
-        css_class = "chip chip-absorbente"
-    elif tipo == "transitorio":
-        css_class = "chip chip-transitorio"
+def create_chips(states, kind="normal"):
+    if not states:
+        return "<span class='chip chip-empty'>None</span>"
+    if kind == "absorbing":
+        css_class = "chip chip-absorbing"
+    elif kind == "transient":
+        css_class = "chip chip-transient"
     else:
         css_class = "chip"
-    return "".join([f"<span class='{css_class}'>{estado}</span>" for estado in estados])
+    return "".join([f"<span class='{css_class}'>{state}</span>" for state in states])
 
 
-def mostrar_tarjeta_estados(titulo, estados, tipo, nota):
-    chips_html = crear_chips(estados, tipo=tipo)
+def display_state_card(title, states, kind, note):
+    chips_html = create_chips(states, kind=kind)
     st.markdown(
         f"""
-        <div class="estado-card">
-            <h3>{titulo}</h3>
+        <div class="state-card">
+            <h3>{title}</h3>
             <div class="chips-container">{chips_html}</div>
-            <div class="small-note">{nota}</div>
+            <div class="small-note">{note}</div>
         </div>
         """,
         unsafe_allow_html=True
     )
 
 
-# ── Sidebar ───────────────────────────────────────────────────────────────────
-st.sidebar.header("Configuración general")
+# ── Sidebar ──────────────────────────────────────────────────────────────────
+st.sidebar.header("General settings")
 
 matrix_source = st.sidebar.radio(
-    "Origen de la matriz",
-    ["Ingreso manual", "Cargar CSV/Excel"],
+    "Matrix source",
+    ["Manual entry", "Upload CSV/Excel"],
     index=0,
     key="matrix_source"
 )
@@ -817,9 +817,9 @@ upload_ready = False
 upload_error = None
 uploaded_file_name = None
 
-if matrix_source == "Ingreso manual":
+if matrix_source == "Manual entry":
     dim = st.sidebar.selectbox(
-        "Número de estados",
+        "Number of states",
         list(range(2, 19)),
         index=1,
         key="manual_dim"
@@ -827,14 +827,14 @@ if matrix_source == "Ingreso manual":
     initialize_matrix_cells(dim)
 
 else:
-    st.sidebar.markdown("### Cargar matriz")
+    st.sidebar.markdown("### Upload matrix")
     st.sidebar.caption(
-        "El archivo debe contener únicamente los valores de la matriz, "
-        "sin nombres de filas, sin nombres de columnas y sin encabezados."
+        "The file must contain only the matrix values, "
+        "without row names, column names, or headers."
     )
 
     uploaded_file = st.sidebar.file_uploader(
-        "Archivo de matriz",
+        "Matrix file",
         type=["csv", "xlsx", "xls"],
         key="matrix_file_uploader"
     )
@@ -853,38 +853,38 @@ else:
 
             upload_ready = True
             st.sidebar.success(
-                f"Matriz {rows} × {cols} cargada desde '{uploaded_file.name}'."
+                f"{rows} × {cols} matrix loaded from '{uploaded_file.name}'."
             )
-            st.sidebar.caption(f"Número de estados detectado automáticamente: {dim}")
+            st.sidebar.caption(f"Number of states detected automatically: {dim}")
 
         except Exception as exc:
             upload_error = str(exc)
             st.sidebar.error(upload_error)
 
-            # Permite preparar los nombres de los estados incluso antes de
-            # disponer de un archivo válido.
+            # Allow state names to be prepared even before
+            # a valid file is available.
             dim = st.sidebar.selectbox(
-                "Número de estados para preparar nombres",
+                "Number of states for naming",
                 list(range(2, 19)),
                 index=1,
                 key="upload_preload_dim"
             )
     else:
-        # De esta forma los nombres de los estados pueden configurarse ANTES
-        # de cargar el CSV/Excel. Al cargarlo, la dimensión se detecta sola.
+        # This allows state names to be configured BEFORE
+        # uploading the CSV/Excel file. Once uploaded, the dimension is detected automatically.
         dim = st.sidebar.selectbox(
-            "Número de estados para preparar nombres",
+            "Number of states for naming",
             list(range(2, 19)),
             index=1,
             key="upload_preload_dim"
         )
         st.sidebar.info(
-            "Puedes cambiar los nombres de los estados ahora. "
-            "Cuando cargues el archivo, la dimensión de la matriz se detectará automáticamente."
+            "You can change the state names now. "
+            "When you upload the file, the matrix dimension will be detected automatically."
         )
 
 n_steps_sidebar = st.sidebar.number_input(
-    "Pasos n", min_value=1, max_value=2000, value=20, step=1
+    "Steps n", min_value=1, max_value=2000, value=20, step=1
 )
 
 init_container = st.sidebar.container()
@@ -893,8 +893,8 @@ names_container = st.sidebar.container()
 
 with names_container:
     st.markdown("---")
-    st.markdown("### Nombres de estados")
-    st.caption("Puedes modificar los nombres antes o después de cargar la matriz.")
+    st.markdown("### State names")
+    st.caption("You can change the names before or after uploading the matrix.")
     state_names = []
 
     for i in range(dim):
@@ -905,30 +905,30 @@ with names_container:
             st.session_state[key] = default_name
 
         name = st.text_input(
-            f"Estado {i}",
+            f"State {i}",
             key=key
         )
         state_names.append(name.strip() if name.strip() else default_name)
 
 with init_container:
     st.markdown("---")
-    st.markdown("### Estado inicial")
+    st.markdown("### Initial state")
     init_mode_sidebar = st.radio(
-        "Tipo de distribución inicial",
-        ["Un estado puro", "Distribución personalizada"],
+        "Initial distribution type",
+        ["Single state", "Custom distribution"],
         key="sidebar_init_mode"
     )
     init_state_sidebar = None
     custom_values_sidebar = []
 
-    if init_mode_sidebar == "Un estado puro":
+    if init_mode_sidebar == "Single state":
         init_state_sidebar = st.selectbox(
-            "Estado inicial",
+            "Initial state",
             state_names,
             key=f"sidebar_init_state_{dim}"
         )
     else:
-        st.markdown("**Distribución inicial**")
+        st.markdown("**Initial distribution**")
         for i, state in enumerate(state_names):
             value = st.number_input(
                 f"P(X₀ = {state})",
@@ -943,29 +943,29 @@ with init_container:
         total_v0_sidebar = sum(custom_values_sidebar)
         if abs(total_v0_sidebar - 1.0) > 1e-6:
             st.warning(
-                f"La suma actual es {total_v0_sidebar:.4f}. "
-                "El programa normalizará automáticamente."
+                f"The current sum is {total_v0_sidebar:.4f}. "
+                "The program will normalize it automatically."
             )
 
 with button_container:
     st.markdown("---")
-    solve_disabled = matrix_source == "Cargar CSV/Excel" and not upload_ready
+    solve_disabled = matrix_source == "Upload CSV/Excel" and not upload_ready
     submitted = st.button(
-        "Resolver cadena de Markov",
+        "Solve Markov chain",
         use_container_width=True,
         type="primary",
         disabled=solve_disabled
     )
 
     if solve_disabled:
-        st.caption("Carga primero un archivo CSV o Excel válido.")
+        st.caption("Upload a valid CSV or Excel file first.")
 
 
-# ── Encabezado principal ──────────────────────────────────────────────────────
-st.title("Análisis de Cadenas de Markov")
+# ── Main heading ─────────────────────────────────────────────────────────────
+st.title("Markov Chain Analysis")
 
 
-# ── Firma actual ──────────────────────────────────────────────────────────────
+# ── Current signature ────────────────────────────────────────────────────────
 matrix_text_signature = tuple(
     tuple(str(value).strip() for value in row)
     for row in collect_matrix_text(dim)
@@ -983,33 +983,33 @@ current_signature = (
 )
 
 
-# ── Pestañas ──────────────────────────────────────────────────────────────────
+# ── Tabs ─────────────────────────────────────────────────────────────────────
 tab_matrix_graph, tab_nsteps, tab_stationary, tab_recurrence, tab_first_passage, tab_absorption = st.tabs([
-    "Matriz y grafo", "N-pasos", "Estado estable",
-    "Tiempos de recurrencia", "Primera pasada", "Prob. de absorción"
+    "Matrix and graph", "N-step", "Steady state",
+    "Recurrence times", "First passage", "Absorption probability"
 ])
 
 
-# ── TAB 1: Matriz y grafo ─────────────────────────────────────────────────────
+# ── TAB 1: Matrix and graph ─────────────────────────────────────────────────────
 with tab_matrix_graph:
-    st.markdown("## Ingreso de matriz y grafo de transición")
-    st.markdown("### Matriz de transición")
+    st.markdown("## Matrix input and transition graph")
+    st.markdown("### Transition matrix")
 
-    if matrix_source == "Cargar CSV/Excel":
+    if matrix_source == "Upload CSV/Excel":
         if upload_ready:
             st.success(
-                f"Matriz cargada desde **{uploaded_file_name}**. "
-                "Los valores quedan disponibles en la cuadrícula y pueden editarse antes de resolver."
+                f"Matrix loaded from **{uploaded_file_name}**. "
+                "The values remain editable in the grid before solving."
             )
         else:
             st.info(
-                "Selecciona un archivo CSV o Excel desde la barra lateral. "
-                "Debe contener solo los valores de la matriz, sin encabezados ni nombres de estados."
+                "Select a CSV or Excel file from the sidebar. "
+                "It must contain only the matrix values, with no headers or state names."
             )
 
     st.caption(
-        "Puedes ingresar decimales y fracciones en la misma matriz, "
-        "por ejemplo: 0.5, 1/4, 0.25, 3/4."
+        "You can enter decimals and fractions in the same matrix, "
+        "for example: 0.5, 1/4, 0.25, 3/4."
     )
 
     header_cols = st.columns(dim + 1)
@@ -1026,14 +1026,14 @@ with tab_matrix_graph:
                 key=f"cell_{i}_{j}", label_visibility="collapsed"
             )
 
-    st.info("El estado inicial y el botón para resolver están en la barra lateral.")
+    st.info("The initial state and solve button are in the sidebar.")
 
 
-# ── Resolver modelo ───────────────────────────────────────────────────────────
+# ── Solve model ──────────────────────────────────────────────────────────────
 if submitted:
     try:
-        if matrix_source == "Cargar CSV/Excel" and not upload_ready:
-            raise ValueError("Debes cargar primero un archivo CSV o Excel válido.")
+        if matrix_source == "Upload CSV/Excel" and not upload_ready:
+            raise ValueError("You must upload a valid CSV or Excel file first.")
 
         matrix_text = collect_matrix_text(dim)
         P = parse_matrix_values(matrix_text)
@@ -1041,7 +1041,7 @@ if submitted:
 
         if not valid:
             st.session_state.pop("solution_data", None)
-            st.error(f"Matriz inválida: {msg}")
+            st.error(f"Invalid matrix: {msg}")
         else:
             v0 = build_v0(dim=dim, state_names=state_names, init_mode=init_mode_sidebar,
                           init_state=init_state_sidebar, custom_values=custom_values_sidebar)
@@ -1073,14 +1073,14 @@ if submitted:
                 "transient_states": transient_states,
                 "absorption_error": absorption_error
             }
-            st.success("Modelo resuelto correctamente.")
+            st.success("Model solved successfully.")
 
     except Exception as e:
         st.session_state.pop("solution_data", None)
-        st.error(f"No se pudo resolver: {e}")
+        st.error(f"Could not solve: {e}")
 
 
-# ── Recuperar solución ────────────────────────────────────────────────────────
+# ── Retrieve solution ────────────────────────────────────────────────────────
 solution = st.session_state.get("solution_data")
 solution_is_valid = solution is not None and solution.get("signature") == current_signature
 
@@ -1112,21 +1112,21 @@ else:
 
 def require_solution_message():
     if solution is None:
-        st.info("Primero ingresa la matriz y pulsa **Resolver cadena de Markov** en la barra lateral.")
+        st.info("First enter the matrix and click **Solve Markov chain** in the sidebar.")
     else:
-        st.warning("Cambiaste la configuración. Vuelve a pulsar **Resolver cadena de Markov** en la barra lateral.")
+        st.warning("The configuration changed. Click **Solve Markov chain** again in the sidebar.")
 
 
-# ── Mostrar grafo ─────────────────────────────────────────────────────────────
+# ── Display graph ────────────────────────────────────────────────────────────
 with tab_matrix_graph:
     st.markdown("---")
-    st.markdown("## Grafo de la matriz")
+    st.markdown("## Matrix graph")
     if not solution_is_valid:
-        st.info("Cuando resuelvas la cadena, aquí aparecerán la matriz validada y su grafo.")
+        st.info("Once you solve the chain, the validated matrix and its graph will appear here.")
     else:
         colA, colB = st.columns([1, 1.3])
         with colA:
-            st.markdown("### Matriz validada")
+            st.markdown("### Validated matrix")
             P_df = pd.DataFrame(np.round(P, 6), index=state_names, columns=state_names)
             st.dataframe(P_df, use_container_width=True, height=460)
         with colB:
@@ -1134,84 +1134,84 @@ with tab_matrix_graph:
             st.plotly_chart(fig_graph, use_container_width=True)
 
 
-# ── TAB 2: n pasos ────────────────────────────────────────────────────────────
+# ── TAB 2: n steps ───────────────────────────────────────────────────────────
 with tab_nsteps:
-    st.markdown("## Matriz en n pasos y evolución de probabilidades")
+    st.markdown("## N-step matrix and probability evolution")
     if not solution_is_valid:
         require_solution_message()
     else:
-        st.markdown(f"### Matriz $P^{{{n_steps}}}$")
+        st.markdown(f"### Matrix $P^{{{n_steps}}}$")
         Pn_df = pd.DataFrame(np.round(Pn, 6), index=state_names, columns=state_names)
         st.dataframe(Pn_df, use_container_width=True)
         st.markdown("---")
         col1, col2 = st.columns([1, 1])
         with col1:
-            st.markdown(f"### Probabilidad en el paso {n_steps}")
-            dist_df = pd.DataFrame({"Estado": state_names, f"P(X_{n_steps})": [round(float(x), 6) for x in dist_n]})
+            st.markdown(f"### Probability at step {n_steps}")
+            dist_df = pd.DataFrame({"State": state_names, f"P(X_{n_steps})": [round(float(x), 6) for x in dist_n]})
             st.dataframe(dist_df, use_container_width=True, hide_index=True)
         with col2:
-            st.markdown("### Distribución inicial")
-            v0_df = pd.DataFrame({"Estado": state_names, "P(X_0)": [round(float(x), 6) for x in v0]})
+            st.markdown("### Initial distribution")
+            v0_df = pd.DataFrame({"State": state_names, "P(X_0)": [round(float(x), 6) for x in v0]})
             st.dataframe(v0_df, use_container_width=True, hide_index=True)
         st.markdown("---")
-        st.markdown(f"### Evolución en {n_steps} pasos")
+        st.markdown(f"### Evolution over {n_steps} steps")
         fig_ev = build_evolution_figure(evol, state_names, n_steps)
         st.plotly_chart(fig_ev, use_container_width=True)
 
 
-# ── TAB 3: Estado estable ─────────────────────────────────────────────────────
+# ── TAB 3: Steady state ──────────────────────────────────────────────────────
 with tab_stationary:
-    st.markdown("## Estado estable")
+    st.markdown("## Steady state")
 
     if not solution_is_valid:
         require_solution_message()
     else:
         st.latex(r"\pi P = \pi, \qquad \sum_i \pi_i = 1")
         st.info(
-            "La distribución estacionaria π representa el comportamiento de largo plazo "
-            "de la cadena cuando existe una distribución estable."
+            "The stationary distribution π represents the long-run behavior "
+            "of the chain when a stable distribution exists."
         )
 
         if pi is None:
-            st.error("No fue posible calcular la distribución estacionaria.")
+            st.error("The stationary distribution could not be computed.")
         else:
-            # ── Distribución estacionaria ─────────────────────────────────
+            # ── Stationary distribution ───────────────────────────────────
             col1, col2 = st.columns([1, 2])
             with col1:
-                pi_df = pd.DataFrame({"Estado": state_names, "π": [round(float(x), 6) for x in pi]})
+                pi_df = pd.DataFrame({"State": state_names, "π": [round(float(x), 6) for x in pi]})
                 st.dataframe(pi_df, use_container_width=True, hide_index=True, height=420)
             with col2:
                 fig_pi = build_stationary_figure(pi, state_names)
                 st.plotly_chart(fig_pi, use_container_width=True, key="pi_stationary")
 
-            # ── Evolución de la distribución (igual a N-pasos) ─────────────
+            # ── Distribution evolution (same as N-step) ───────────────────
             st.markdown("---")
-            st.markdown(f"### Evolución de la distribución en {n_steps} pasos")
-            st.caption("La misma evolución que en la pestaña N-pasos, útil para ver cómo converge hacia π.")
+            st.markdown(f"### Distribution evolution over {n_steps} steps")
+            st.caption("The same evolution shown in the N-step tab, useful for seeing how it converges to π.")
             fig_ev_stable = build_evolution_figure(evol, state_names, n_steps, mixing_time=spectral["mixing_time"] if spectral else None)
             st.plotly_chart(fig_ev_stable, use_container_width=True, key="ev_stationary")
 
-            # ── Análisis espectral ────────────────────────────────────────
+            # ── Spectral analysis ─────────────────────────────────────────
             st.markdown("---")
-            st.markdown("## Análisis espectral y convergencia")
+            st.markdown("## Spectral analysis and convergence")
 
             if spectral is not None:
                 lam2 = spectral["lambda2_mod"]
                 gap = spectral["spectral_gap"]
                 mt = spectral["mixing_time"]
 
-                # Tarjetas de métricas
+                # Metric cards
                 mc1, mc2, mc3 = st.columns(3)
 
                 with mc1:
                     lam2_str = f"{lam2:.6f}" if lam2 is not None else "N/A"
                     st.markdown(
                         f"""<div class="spectral-card">
-                            <h4>Segundo eigenvalue |λ₂|</h4>
+                            <h4>Second eigenvalue |λ₂|</h4>
                             <div class="metric-value">{lam2_str}</div>
                             <div class="metric-label">
-                                Controla la velocidad de convergencia.<br>
-                                Cuanto más cercano a 1, más lenta es la mezcla.
+                                Controls the convergence rate.<br>
+                                The closer it is to 1, the slower the mixing.
                             </div>
                         </div>""",
                         unsafe_allow_html=True
@@ -1221,39 +1221,39 @@ with tab_stationary:
                     gap_str = f"{gap:.6f}" if gap is not None else "N/A"
                     st.markdown(
                         f"""<div class="spectral-card">
-                            <h4>Brecha espectral (1 − |λ₂|)</h4>
+                            <h4>Spectral gap (1 − |λ₂|)</h4>
                             <div class="metric-value">{gap_str}</div>
                             <div class="metric-label">
-                                Un gap mayor implica convergencia más rápida.<br>
-                                Gap ≈ 0 indica convergencia muy lenta o no convergencia.
+                                A larger gap implies faster convergence.<br>
+                                Gap ≈ 0 indicates very slow convergence or no convergence.
                             </div>
                         </div>""",
                         unsafe_allow_html=True
                     )
 
                 with mc3:
-                    mt_str = str(mt) if mt is not None else "∞ (no converge)"
+                    mt_str = str(mt) if mt is not None else "∞ (does not converge)"
                     st.markdown(
                         f"""<div class="spectral-card">
-                            <h4>Mixing time estimado</h4>
+                            <h4>Estimated mixing time</h4>
                             <div class="metric-value">{mt_str}</div>
                             <div class="metric-label">
-                                Paso aproximado en que TVD &lt; 0.01.<br>
-                                Calculado como ⌈log(1/ε) / log(1/|λ₂|)⌉ con ε = 0.01.
+                                Approximate step at which TVD &lt; 0.01.<br>
+                                Computed as ⌈log(1/ε) / log(1/|λ₂|)⌉ with ε = 0.01.
                             </div>
                         </div>""",
                         unsafe_allow_html=True
                     )
 
-                # Espectro completo
-                st.markdown("### Espectro completo — módulos de los eigenvalues")
+                # Full spectrum
+                st.markdown("### Full spectrum — eigenvalue moduli")
                 st.caption(
-                    "λ₁ = 1 (azul) es el eigenvalue estacionario. "
-                    "|λ₂| (naranja) determina la tasa de convergencia. "
-                    "El resto (verde) son componentes secundarias."
+                    "λ₁ = 1 (blue) is the stationary eigenvalue. "
+                    "|λ₂| (orange) determines the convergence rate. "
+                    "The remaining values (green) are secondary components."
                 )
 
-                # Tabla de eigenvalues
+                # Eigenvalue table
                 eig_rows = []
                 for i, ev in enumerate(spectral["eigenvalues"]):
                     if np.isreal(ev):
@@ -1277,30 +1277,30 @@ with tab_stationary:
                     fig_spec = build_spectral_figure(spectral, state_names)
                     st.plotly_chart(fig_spec, use_container_width=True, key="spectral_chart")
 
-                # Gráfica de convergencia TVD
+                # TVD convergence plot
                 st.markdown("---")
-                st.markdown("### Convergencia hacia π — Distancia Total de Variación (TVD)")
+                st.markdown("### Convergence to π — Total Variation Distance (TVD)")
                 st.caption(
-                    "TVD = ½ Σ|v(n)ᵢ − πᵢ| mide qué tan lejos está la distribución actual de π. "
-                    "La curva punteada es el decaimiento teórico |λ₂|ⁿ."
+                    "TVD = ½ Σ|v(n)ᵢ − πᵢ| measures how far the current distribution is from π. "
+                    "The dotted curve is the theoretical decay |λ₂|ⁿ."
                 )
                 fig_conv = build_convergence_figure(evol, pi, state_names, n_steps, spectral)
                 st.plotly_chart(fig_conv, use_container_width=True, key="convergence_chart")
 
             else:
-                st.warning("No fue posible realizar el análisis espectral.")
+                st.warning("The spectral analysis could not be performed.")
 
 
-# ── TAB 4: Tiempos de recurrencia ─────────────────────────────────────────────
+# ── TAB 4: Recurrence times ─────────────────────────────────────────────
 with tab_recurrence:
-    st.markdown("## Tiempos medios de recurrencia")
+    st.markdown("## Mean recurrence times")
     if not solution_is_valid:
         require_solution_message()
     else:
         st.latex(r"\mu_{ii} = \frac{1}{\pi_i}")
         st.info(
-            "El tiempo medio de recurrencia indica el número esperado de pasos para "
-            "regresar a un estado, dado que la cadena parte de ese mismo estado."
+            "The mean recurrence time is the expected number of steps required to "
+            "return to a state, given that the chain starts in that state."
         )
         if recurrence_df is not None:
             col1, col2 = st.columns([1, 1.5])
@@ -1311,55 +1311,55 @@ with tab_recurrence:
                 if fig_rec is not None:
                     st.plotly_chart(fig_rec, use_container_width=True)
                 else:
-                    st.warning("No hay valores finitos para graficar.")
+                    st.warning("There are no finite values to plot.")
             st.warning(
-                "Interpretación cuidadosa: la fórmula m_ii = 1/π_i es especialmente adecuada "
-                "para cadenas irreducibles positivas recurrentes."
+                "Careful interpretation: the formula m_ii = 1/π_i is especially appropriate "
+                "for irreducible positive recurrent chains."
             )
         else:
-            st.warning("No fue posible calcular los tiempos de recurrencia.")
+            st.warning("The recurrence times could not be computed.")
 
 
-# ── TAB 5: Primera pasada ─────────────────────────────────────────────────────
+# ── TAB 5: First passage ─────────────────────────────────────────────────────
 with tab_first_passage:
-    st.markdown("## Tiempos medios de primera pasada")
+    st.markdown("## Mean first-passage times")
     if not solution_is_valid:
         require_solution_message()
     else:
         st.latex(r"\mu_{ij} = 1 + \sum_{k \neq j} p_{ik}\mu_{kj}, \qquad i \neq j")
-        st.info("μ_ij = número esperado de pasos para llegar por primera vez a j desde i.")
+        st.info("μ_ij = expected number of steps to reach j for the first time starting from i.")
         if first_passage_df is not None:
-            st.markdown("### Matriz de tiempos medios de primera pasada")
+            st.markdown("### Mean first-passage-time matrix")
             st.dataframe(first_passage_df, use_container_width=True)
             st.markdown("---")
             fig_fp = build_first_passage_heatmap(first_passage_df)
             if fig_fp is not None:
                 st.plotly_chart(fig_fp, use_container_width=True)
             else:
-                st.warning("No fue posible generar la gráfica.")
+                st.warning("The plot could not be generated.")
         else:
-            st.warning("No fue posible calcular los tiempos de primera pasada.")
+            st.warning("The first-passage times could not be computed.")
 
 
-# ── TAB 6: Probabilidad de absorción ──────────────────────────────────────────
+# ── TAB 6: Absorption probability ────────────────────────────────────────────
 with tab_absorption:
-    st.markdown("## Probabilidad de absorción")
+    st.markdown("## Absorption probability")
     if not solution_is_valid:
         require_solution_message()
     else:
         st.markdown(
             """<div class="info-box">
-                <h4>Interpretación</h4>
-                <p>Cadenas con al menos un estado absorbente. Desde los estados transitorios
-                se calculan las probabilidades de terminar absorbido en cada estado absorbente.</p>
+                <h4>Interpretation</h4>
+                <p>For chains with at least one absorbing state, the probabilities of eventually
+                being absorbed in each absorbing state are computed from the transient states.</p>
             </div>""",
             unsafe_allow_html=True
         )
-        st.markdown("### Fórmulas utilizadas")
+        st.markdown("### Formulas used")
         st.latex(r"N=(I-Q)^{-1}")
         st.latex(r"B=NR")
         st.latex(r"\mathbf{t}=N\mathbf{1}")
-        st.info("Q: transiciones entre transitorios. R: transitorios → absorbentes. N: matriz fundamental. B: prob. absorción. t: tiempo promedio.")
+        st.info("Q: transitions among transient states. R: transient → absorbing transitions. N: fundamental matrix. B: absorption probabilities. t: mean time.")
         st.markdown("---")
 
         if len(absorbing_states) > 0:
@@ -1367,20 +1367,20 @@ with tab_absorption:
             transient_names = [state_names[i] for i in transient_states]
             col1, col2 = st.columns([1, 1])
             with col1:
-                mostrar_tarjeta_estados("Estados absorbentes detectados", absorbing_names, "absorbente",
-                                        "Un estado absorbente no se abandona una vez la cadena entra en él.")
+                display_state_card("Detected absorbing states", absorbing_names, "absorbing",
+                                   "An absorbing state cannot be left once the chain enters it.")
             with col2:
-                mostrar_tarjeta_estados("Estados transitorios detectados", transient_names, "transitorio",
-                                        "Un estado transitorio puede moverse hacia otros estados antes de la absorción.")
+                display_state_card("Detected transient states", transient_names, "transient",
+                                   "A transient state can move to other states before absorption.")
 
             if N_df is not None:
                 st.markdown("---")
-                st.markdown("### Matriz fundamental N")
+                st.markdown("### Fundamental matrix N")
                 st.dataframe(N_df, use_container_width=True)
 
             if absorption_time_df is not None:
                 st.markdown("---")
-                st.markdown("### Tiempo promedio antes de ser absorbido")
+                st.markdown("### Mean time to absorption")
                 st.dataframe(absorption_time_df, use_container_width=True, hide_index=True)
                 fig_abs_time = build_absorption_time_figure(absorption_time_df)
                 if fig_abs_time is not None:
@@ -1388,7 +1388,7 @@ with tab_absorption:
 
             if absorption_df is not None:
                 st.markdown("---")
-                st.markdown("### Matriz de probabilidades de absorción B")
+                st.markdown("### Absorption-probability matrix B")
                 st.dataframe(absorption_df, use_container_width=True)
                 fig_abs = build_absorption_figure(absorption_df)
                 if fig_abs is not None:
@@ -1397,4 +1397,4 @@ with tab_absorption:
             else:
                 st.warning(absorption_error)
         else:
-            st.warning("La cadena no tiene estados absorbentes.")
+            st.warning("The chain has no absorbing states.")
