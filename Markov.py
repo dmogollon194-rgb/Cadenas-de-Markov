@@ -152,42 +152,35 @@ st.markdown(watermark_html, unsafe_allow_html=True)
 
 
 # ── Funciones auxiliares ──────────────────────────────────────────────────────
-def parse_probability_decimal(value):
+def parse_probability(value):
+    """Convierte una probabilidad escrita como decimal o fracción a float.
+
+    Ejemplos válidos: 0.5, 0,25, 1/2, 3/4, 1.0.
+    Se pueden mezclar decimales y fracciones dentro de la misma matriz.
+    """
     if value is None:
         raise ValueError("Celda vacía.")
+
     text = str(value).strip().replace(",", ".")
     if text == "":
         raise ValueError("Celda vacía.")
-    try:
-        return float(text)
-    except Exception as exc:
-        raise ValueError(f"Valor decimal inválido: {value}") from exc
 
-
-def parse_probability_fraction(value):
-    if value is None:
-        raise ValueError("Celda vacía.")
-    text = str(value).strip().replace(",", ".")
-    if text == "":
-        raise ValueError("Celda vacía.")
     try:
         if "/" in text:
             return float(Fraction(text))
         return float(text)
     except Exception as exc:
-        raise ValueError(f"Valor inválido: {value}") from exc
+        raise ValueError(
+            f"Valor inválido: {value}. Usa un decimal (0.25) o una fracción (1/4)."
+        ) from exc
 
 
-def parse_matrix_values(matrix_text, mode):
+def parse_matrix_values(matrix_text):
     dim = len(matrix_text)
     P = np.zeros((dim, dim), dtype=float)
     for i in range(dim):
         for j in range(dim):
-            value = matrix_text[i][j]
-            if mode == "Decimales":
-                P[i, j] = parse_probability_decimal(value)
-            else:
-                P[i, j] = parse_probability_fraction(value)
+            P[i, j] = parse_probability(matrix_text[i][j])
     return P
 
 
@@ -633,13 +626,13 @@ def build_first_passage_heatmap(first_passage_df):
     return fig
 
 
-def initialize_matrix_cells(dim, input_mode):
+def initialize_matrix_cells(dim):
     """Inicializa la matriz cuando el ingreso es manual."""
     meta_key = "matrix_input_meta"
-    current_meta = ("manual", dim, input_mode)
+    current_meta = ("manual", dim)
 
     if st.session_state.get(meta_key) != current_meta:
-        default_value = f"{1 / dim:.4f}" if input_mode == "Decimales" else f"1/{dim}"
+        default_value = f"{1 / dim:.4f}"
 
         for i in range(dim):
             for j in range(dim):
@@ -748,10 +741,10 @@ def read_uploaded_matrix(uploaded_file):
     return matrix_values, rows, cols, signature
 
 
-def load_uploaded_matrix_into_session(matrix_values, dim, input_mode, signature):
+def load_uploaded_matrix_into_session(matrix_values, dim, signature):
     """Carga el archivo en los campos editables solo cuando corresponde."""
     meta_key = "matrix_input_meta"
-    current_meta = ("upload", signature, dim, input_mode)
+    current_meta = ("upload", signature, dim)
 
     if st.session_state.get(meta_key) != current_meta:
         for i in range(dim):
@@ -819,12 +812,6 @@ matrix_source = st.sidebar.radio(
     key="matrix_source"
 )
 
-input_mode = st.sidebar.radio(
-    "Modo de matriz",
-    ["Decimales", "Fracciones"],
-    index=0
-)
-
 uploaded_file = None
 upload_ready = False
 upload_error = None
@@ -837,7 +824,7 @@ if matrix_source == "Ingreso manual":
         index=1,
         key="manual_dim"
     )
-    initialize_matrix_cells(dim, input_mode)
+    initialize_matrix_cells(dim)
 
 else:
     st.sidebar.markdown("### Cargar matriz")
@@ -861,7 +848,6 @@ else:
             load_uploaded_matrix_into_session(
                 uploaded_values,
                 dim,
-                input_mode,
                 upload_signature
             )
 
@@ -988,7 +974,6 @@ matrix_text_signature = tuple(
 current_signature = (
     matrix_source,
     dim,
-    input_mode,
     tuple(state_names),
     matrix_text_signature,
     int(n_steps_sidebar),
@@ -1022,10 +1007,10 @@ with tab_matrix_graph:
                 "Debe contener solo los valores de la matriz, sin encabezados ni nombres de estados."
             )
 
-    if input_mode == "Decimales":
-        st.caption("Ingresa decimales, por ejemplo: 0.5, 0.25, 1.0")
-    else:
-        st.caption("Ingresa fracciones o decimales, por ejemplo: 1/2, 3/4, 0.25")
+    st.caption(
+        "Puedes ingresar decimales y fracciones en la misma matriz, "
+        "por ejemplo: 0.5, 1/4, 0.25, 3/4."
+    )
 
     header_cols = st.columns(dim + 1)
     header_cols[0].markdown("")
@@ -1051,7 +1036,7 @@ if submitted:
             raise ValueError("Debes cargar primero un archivo CSV o Excel válido.")
 
         matrix_text = collect_matrix_text(dim)
-        P = parse_matrix_values(matrix_text, input_mode)
+        P = parse_matrix_values(matrix_text)
         valid, msg = is_valid_stochastic(P)
 
         if not valid:
