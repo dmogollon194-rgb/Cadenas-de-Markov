@@ -1,3 +1,118 @@
+
+ayer 10:27 p.m.
+should y musb es lo mismo?
+
+No. should y must no significan lo mismo. La diferencia principal es la intensidad de la obligación:
+
+Modal	Significado aproximado	Fuerza
+should	debería / deberías	recomendación, consejo
+must	debe / tienes que	obligación fuerte
+Por ejemplo:
+
+You should study more. → Deberías estudiar más.
+Es un consejo. Puedes no hacerlo.
+
+You must wear a seat belt. → Debes usar cinturón de seguridad.
+Es una obligación o requisito.
+
+Otro contraste claro:
+
+Students should arrive early. → Se recomienda que los estudiantes lleguen temprano.
+
+Students must arrive before 8:00. → Los estudiantes tienen que llegar antes de las 8:00.
+
+Además, must not / mustn't significa prohibición, no simplemente una recomendación negativa:
+
+You shouldn't smoke here. → No deberías fumar aquí.
+
+You mustn't smoke here. → Está prohibido fumar aquí.
+
+Una forma fácil de recordarlo es:
+
+should = sería buena idea
+must = es obligatorio.
+
+
+hoy 3:04 p.m.
+
+Pasted text(20260816-172602).txt
+Documento
+Quiero que aqui se permita cargar la matriz desde excel o csv, para leerla la matriz se introduce sin nada, sin titulos de filas, sin titulos de columnas, sin nada, es decir solo los valores, manten todo lo demás, tambien ajusta que los nombres de los estados se puedan cambian cuando se carga la matriz o antes de cambiarlo
+
+Listo. Modifiqué tu aplicación conservando el resto del análisis de cadenas de Markov. Partí de la estructura actual, donde la matriz se ingresaba manualmente y los nombres de estados se definían en la barra lateral. 
+
+
+Ahora incorpora:
+
+Ingreso manual, exactamente como antes.
+
+Carga desde CSV, XLSX o XLS.
+
+El archivo se interpreta sin encabezados, sin nombres de filas y sin nombres de columnas: únicamente los valores.
+
+La dimensión se detecta automáticamente al cargar el archivo.
+
+La matriz cargada se pasa a la cuadrícula existente, por lo que puedes modificar cualquier valor después de cargarla.
+
+Los nombres s0, s1, s2, etc. se pueden cambiar:
+
+antes de cargar el archivo;
+
+después de cargarlo;
+
+o cuando la matriz se ingresa manualmente.
+
+Si quieres nombrar los estados antes de cargar, puedes indicar provisionalmente cuántos estados tendrá la matriz. Cuando cargues el archivo, su dimensión real prevalece.
+
+Si cambias el nombre de un estado, se refleja en las tablas, gráficas, estado inicial, absorción, primera pasada, etc., porque el código original ya utiliza state_names en esos cálculos y visualizaciones. 
+
+
+Valida que el archivo:
+
+no esté vacío;
+
+no tenga celdas internas vacías;
+
+sea cuadrado;
+
+tenga entre 2 y 18 estados.
+
+Si cargas una matriz nueva, la solución anterior se invalida.
+
+También corregí un detalle útil: si modificas una celda después de resolver, ahora la aplicación detecta que la matriz cambió y te obliga a resolver nuevamente.
+
+El archivo cargado no se vuelve a imponer en cada rerun de Streamlit; por eso puedes cargarlo y luego editar sus valores manualmente sin que tus cambios desaparezcan.
+
+Por ejemplo, un CSV válido sería simplemente:
+
+0.5,0.3,0.2
+0.1,0.7,0.2
+0.4,0.1,0.5
+Y en Excel sería exactamente:
+
+0.5   0.3   0.2
+0.1   0.7   0.2
+0.4   0.1   0.5
+sin escribir s0, s1, encabezados ni ninguna otra información.
+
+También probé la lectura con archivos CSV y XLSX y verifiqué que el código compile correctamente. Para .xlsx, pandas utiliza openpyxl.
+
+Código completo modificado:
+
+Descargar markov_app_excel_csv.py
+
+
+markov_app_excel_csv.py
+Código
+
+
+Biblioteca
+/
+markov_app_excel_csv.py
+
+
+import hashlib
+import io
 import math
 from fractions import Fraction
 
@@ -632,18 +747,139 @@ def build_first_passage_heatmap(first_passage_df):
 
 
 def initialize_matrix_cells(dim, input_mode):
+    """Inicializa la matriz cuando el ingreso es manual."""
     meta_key = "matrix_input_meta"
-    current_meta = (dim, input_mode)
+    current_meta = ("manual", dim, input_mode)
+
     if st.session_state.get(meta_key) != current_meta:
         default_value = f"{1 / dim:.4f}" if input_mode == "Decimales" else f"1/{dim}"
+
         for i in range(dim):
             for j in range(dim):
                 st.session_state[f"cell_{i}_{j}"] = default_value
+
         st.session_state[meta_key] = current_meta
+        st.session_state.pop("solution_data", None)
+
+
+def read_uploaded_matrix(uploaded_file):
+    """
+    Lee una matriz desde CSV o Excel SIN encabezados ni índices.
+
+    El archivo debe contener únicamente los valores de la matriz:
+        p11  p12  ...
+        p21  p22  ...
+        ...
+
+    Retorna:
+        matrix_values : lista de listas con los valores tal como serán
+                        mostrados en los campos de Streamlit.
+        rows, cols    : dimensiones detectadas.
+        signature     : huella del archivo para no recargarlo en cada rerun.
+    """
+    if uploaded_file is None:
+        raise ValueError("No se ha seleccionado ningún archivo.")
+
+    raw_bytes = uploaded_file.getvalue()
+    if not raw_bytes:
+        raise ValueError("El archivo está vacío.")
+
+    file_name = uploaded_file.name.lower()
+
+    try:
+        if file_name.endswith(".csv"):
+            # sep=None permite detectar coma, punto y coma, tabulador, etc.
+            # dtype=str evita transformar fracciones como 1/2.
+            df = pd.read_csv(
+                io.BytesIO(raw_bytes),
+                header=None,
+                dtype=str,
+                sep=None,
+                engine="python",
+                keep_default_na=False
+            )
+
+        elif file_name.endswith((".xlsx", ".xls")):
+            # header=None es esencial: la primera fila del archivo es parte
+            # de la matriz, no un encabezado.
+            df = pd.read_excel(
+                io.BytesIO(raw_bytes),
+                header=None,
+                dtype=object
+            )
+
+        else:
+            raise ValueError("Formato no compatible. Usa un archivo CSV, XLSX o XLS.")
+
+    except ImportError as exc:
+        raise ValueError(
+            "No fue posible leer el archivo de Excel. "
+            "Para archivos .xlsx instala 'openpyxl'; para .xls puede requerirse 'xlrd'."
+        ) from exc
+    except Exception as exc:
+        raise ValueError(f"No fue posible leer el archivo: {exc}") from exc
+
+    if df.empty:
+        raise ValueError("El archivo no contiene datos.")
+
+    # Eliminar únicamente filas/columnas completamente vacías que puedan
+    # quedar al final del archivo. No se permiten huecos dentro de la matriz.
+    df = df.replace(r"^\s*$", np.nan, regex=True)
+    df = df.dropna(axis=0, how="all").dropna(axis=1, how="all")
+
+    if df.empty:
+        raise ValueError("El archivo no contiene valores de matriz.")
+
+    if df.isna().any().any():
+        empty_positions = np.argwhere(df.isna().to_numpy())
+        first_i, first_j = empty_positions[0]
+        raise ValueError(
+            f"La matriz contiene una celda vacía en la fila {first_i + 1}, "
+            f"columna {first_j + 1}."
+        )
+
+    rows, cols = df.shape
+
+    if rows != cols:
+        raise ValueError(
+            f"La matriz cargada debe ser cuadrada. "
+            f"Se detectó una matriz de {rows} x {cols}."
+        )
+
+    if rows < 2 or rows > 18:
+        raise ValueError(
+            f"La matriz tiene {rows} estados. "
+            "La aplicación admite entre 2 y 18 estados."
+        )
+
+    matrix_values = [
+        [str(df.iat[i, j]).strip() for j in range(cols)]
+        for i in range(rows)
+    ]
+
+    signature = hashlib.sha256(raw_bytes).hexdigest()
+    return matrix_values, rows, cols, signature
+
+
+def load_uploaded_matrix_into_session(matrix_values, dim, input_mode, signature):
+    """Carga el archivo en los campos editables solo cuando corresponde."""
+    meta_key = "matrix_input_meta"
+    current_meta = ("upload", signature, dim, input_mode)
+
+    if st.session_state.get(meta_key) != current_meta:
+        for i in range(dim):
+            for j in range(dim):
+                st.session_state[f"cell_{i}_{j}"] = matrix_values[i][j]
+
+        st.session_state[meta_key] = current_meta
+        st.session_state.pop("solution_data", None)
 
 
 def collect_matrix_text(dim):
-    return [[st.session_state.get(f"cell_{i}_{j}", "") for j in range(dim)] for i in range(dim)]
+    return [
+        [st.session_state.get(f"cell_{i}_{j}", "") for j in range(dim)]
+        for i in range(dim)
+    ]
 
 
 def build_v0(dim, state_names, init_mode, init_state, custom_values):
@@ -689,13 +925,94 @@ def mostrar_tarjeta_estados(titulo, estados, tipo, nota):
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 st.sidebar.header("Configuración general")
 
-dim = st.sidebar.selectbox("Número de estados", list(range(2, 19)), index=1)
+matrix_source = st.sidebar.radio(
+    "Origen de la matriz",
+    ["Ingreso manual", "Cargar CSV/Excel"],
+    index=0,
+    key="matrix_source"
+)
+
+input_mode = st.sidebar.radio(
+    "Modo de matriz",
+    ["Decimales", "Fracciones"],
+    index=0
+)
+
+uploaded_file = None
+upload_ready = False
+upload_error = None
+uploaded_file_name = None
+
+if matrix_source == "Ingreso manual":
+    dim = st.sidebar.selectbox(
+        "Número de estados",
+        list(range(2, 19)),
+        index=1,
+        key="manual_dim"
+    )
+    initialize_matrix_cells(dim, input_mode)
+
+else:
+    st.sidebar.markdown("### Cargar matriz")
+    st.sidebar.caption(
+        "El archivo debe contener únicamente los valores de la matriz, "
+        "sin nombres de filas, sin nombres de columnas y sin encabezados."
+    )
+
+    uploaded_file = st.sidebar.file_uploader(
+        "Archivo de matriz",
+        type=["csv", "xlsx", "xls"],
+        key="matrix_file_uploader"
+    )
+
+    if uploaded_file is not None:
+        try:
+            uploaded_values, rows, cols, upload_signature = read_uploaded_matrix(uploaded_file)
+            dim = rows
+            uploaded_file_name = uploaded_file.name
+
+            load_uploaded_matrix_into_session(
+                uploaded_values,
+                dim,
+                input_mode,
+                upload_signature
+            )
+
+            upload_ready = True
+            st.sidebar.success(
+                f"Matriz {rows} × {cols} cargada desde '{uploaded_file.name}'."
+            )
+            st.sidebar.caption(f"Número de estados detectado automáticamente: {dim}")
+
+        except Exception as exc:
+            upload_error = str(exc)
+            st.sidebar.error(upload_error)
+
+            # Permite preparar los nombres de los estados incluso antes de
+            # disponer de un archivo válido.
+            dim = st.sidebar.selectbox(
+                "Número de estados para preparar nombres",
+                list(range(2, 19)),
+                index=1,
+                key="upload_preload_dim"
+            )
+    else:
+        # De esta forma los nombres de los estados pueden configurarse ANTES
+        # de cargar el CSV/Excel. Al cargarlo, la dimensión se detecta sola.
+        dim = st.sidebar.selectbox(
+            "Número de estados para preparar nombres",
+            list(range(2, 19)),
+            index=1,
+            key="upload_preload_dim"
+        )
+        st.sidebar.info(
+            "Puedes cambiar los nombres de los estados ahora. "
+            "Cuando cargues el archivo, la dimensión de la matriz se detectará automáticamente."
+        )
 
 n_steps_sidebar = st.sidebar.number_input(
     "Pasos n", min_value=1, max_value=2000, value=20, step=1
 )
-
-input_mode = st.sidebar.radio("Modo de matriz", ["Decimales", "Fracciones"], index=0)
 
 init_container = st.sidebar.container()
 button_container = st.sidebar.container()
@@ -704,12 +1021,21 @@ names_container = st.sidebar.container()
 with names_container:
     st.markdown("---")
     st.markdown("### Nombres de estados")
+    st.caption("Puedes modificar los nombres antes o después de cargar la matriz.")
     state_names = []
-    for i in range(dim):
-        name = st.text_input(f"Estado {i}", value=f"s{i}", key=f"state_name_{i}")
-        state_names.append(name.strip() if name.strip() else f"s{i}")
 
-initialize_matrix_cells(dim, input_mode)
+    for i in range(dim):
+        default_name = f"s{i}"
+        key = f"state_name_{i}"
+
+        if key not in st.session_state:
+            st.session_state[key] = default_name
+
+        name = st.text_input(
+            f"Estado {i}",
+            key=key
+        )
+        state_names.append(name.strip() if name.strip() else default_name)
 
 with init_container:
     st.markdown("---")
@@ -721,23 +1047,45 @@ with init_container:
     )
     init_state_sidebar = None
     custom_values_sidebar = []
+
     if init_mode_sidebar == "Un estado puro":
-        init_state_sidebar = st.selectbox("Estado inicial", state_names, key=f"sidebar_init_state_{dim}")
+        init_state_sidebar = st.selectbox(
+            "Estado inicial",
+            state_names,
+            key=f"sidebar_init_state_{dim}"
+        )
     else:
         st.markdown("**Distribución inicial**")
         for i, state in enumerate(state_names):
             value = st.number_input(
-                f"P(X₀ = {state})", min_value=0.0, max_value=1.0,
-                value=round(1 / dim, 4), step=0.01, key=f"sidebar_v0_{dim}_{i}"
+                f"P(X₀ = {state})",
+                min_value=0.0,
+                max_value=1.0,
+                value=round(1 / dim, 4),
+                step=0.01,
+                key=f"sidebar_v0_{dim}_{i}"
             )
             custom_values_sidebar.append(value)
+
         total_v0_sidebar = sum(custom_values_sidebar)
         if abs(total_v0_sidebar - 1.0) > 1e-6:
-            st.warning(f"La suma actual es {total_v0_sidebar:.4f}. El programa normalizará automáticamente.")
+            st.warning(
+                f"La suma actual es {total_v0_sidebar:.4f}. "
+                "El programa normalizará automáticamente."
+            )
 
 with button_container:
     st.markdown("---")
-    submitted = st.button("Resolver cadena de Markov", use_container_width=True, type="primary")
+    solve_disabled = matrix_source == "Cargar CSV/Excel" and not upload_ready
+    submitted = st.button(
+        "Resolver cadena de Markov",
+        use_container_width=True,
+        type="primary",
+        disabled=solve_disabled
+    )
+
+    if solve_disabled:
+        st.caption("Carga primero un archivo CSV o Excel válido.")
 
 
 # ── Encabezado principal ──────────────────────────────────────────────────────
@@ -745,9 +1093,20 @@ st.title("Análisis de Cadenas de Markov")
 
 
 # ── Firma actual ──────────────────────────────────────────────────────────────
+matrix_text_signature = tuple(
+    tuple(str(value).strip() for value in row)
+    for row in collect_matrix_text(dim)
+)
+
 current_signature = (
-    dim, input_mode, tuple(state_names), int(n_steps_sidebar),
-    init_mode_sidebar, init_state_sidebar,
+    matrix_source,
+    dim,
+    input_mode,
+    tuple(state_names),
+    matrix_text_signature,
+    int(n_steps_sidebar),
+    init_mode_sidebar,
+    init_state_sidebar,
     tuple(round(float(x), 8) for x in custom_values_sidebar)
 )
 
@@ -763,6 +1122,19 @@ tab_matrix_graph, tab_nsteps, tab_stationary, tab_recurrence, tab_first_passage,
 with tab_matrix_graph:
     st.markdown("## Ingreso de matriz y grafo de transición")
     st.markdown("### Matriz de transición")
+
+    if matrix_source == "Cargar CSV/Excel":
+        if upload_ready:
+            st.success(
+                f"Matriz cargada desde **{uploaded_file_name}**. "
+                "Los valores quedan disponibles en la cuadrícula y pueden editarse antes de resolver."
+            )
+        else:
+            st.info(
+                "Selecciona un archivo CSV o Excel desde la barra lateral. "
+                "Debe contener solo los valores de la matriz, sin encabezados ni nombres de estados."
+            )
+
     if input_mode == "Decimales":
         st.caption("Ingresa decimales, por ejemplo: 0.5, 0.25, 1.0")
     else:
@@ -788,6 +1160,9 @@ with tab_matrix_graph:
 # ── Resolver modelo ───────────────────────────────────────────────────────────
 if submitted:
     try:
+        if matrix_source == "Cargar CSV/Excel" and not upload_ready:
+            raise ValueError("Debes cargar primero un archivo CSV o Excel válido.")
+
         matrix_text = collect_matrix_text(dim)
         P = parse_matrix_values(matrix_text, input_mode)
         valid, msg = is_valid_stochastic(P)
